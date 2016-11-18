@@ -49,7 +49,8 @@ int main(int argc, const char* argv[]) {
     if (res == VK_SUCCESS) {
       std::cout << "Loaded " << physical_devices.size() << " physical device" << (physical_devices.size() == 1 ? "." : "s.") << std::endl;
       VkPhysicalDeviceProperties device_props;
-      for (int i = 0; i < physical_devices.size(); i++) {
+      using device_index = std::vector<VkPhysicalDevice>::size_type;
+      for (device_index i = 0; i < physical_devices.size(); i++) {
 	vkGetPhysicalDeviceProperties(physical_devices[i], &device_props);
 	std::cout << "Device " << i << ": " << device_props.deviceName << std::endl;
       }
