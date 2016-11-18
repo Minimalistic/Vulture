@@ -123,6 +123,7 @@ int main(int argc, const char* argv[]) {
     std::cout << "Failed to create device..." << std::endl;
 
   std::cout << "Destroying device..." << std::endl;
+  vkDeviceWaitIdle(device);
   vkDestroyDevice(device, nullptr);
 
   std::cout << "Destroying instance..." << std::endl;
