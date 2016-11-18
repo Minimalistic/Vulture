@@ -62,7 +62,69 @@ int main(int argc, const char* argv[]) {
     std::cout << "Could not get number of physical devices..." << std::endl;
     exit(-1);
   }
+
+  uint32_t queue_family_property_count;
+  std::vector<VkQueueFamilyProperties> queue_family_properties;
+  vkGetPhysicalDeviceQueueFamilyProperties(physical_devices[0], 
+					   &queue_family_property_count, 
+					   nullptr);
+  std::cout << "Found " << queue_family_property_count << " queue " 
+	    << (queue_family_property_count == 1 ? "family " : "families ") 
+	    << "for this physical device." << std::endl;
+  queue_family_properties.resize(queue_family_property_count);
+  vkGetPhysicalDeviceQueueFamilyProperties(physical_devices[0],
+					   &queue_family_property_count,
+					   queue_family_properties.data());
+
+  using queue_fam_idx = std::vector<VkQueueFamilyProperties>::size_type;
+  std::cout << "Family\tQueues" << std::endl;
+  for (queue_fam_idx i = 0; i < queue_family_properties.size(); i++)
+    std::cout << i << "\t" << queue_family_properties[i].queueCount << std::endl;
   
+  uint32_t queue_family_idx = 0;
+  uint32_t queue_family_queue_count
+    = queue_family_properties[queue_family_idx].queueCount;
+  
+  VkPhysicalDeviceFeatures supported_features;
+  vkGetPhysicalDeviceFeatures(physical_devices[0], &supported_features);
+
+  VkDeviceQueueCreateInfo device_queue_create_info = {};
+  device_queue_create_info.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
+  device_queue_create_info.pNext = nullptr;
+  device_queue_create_info.flags = 0;
+  device_queue_create_info.queueFamilyIndex = queue_family_idx;
+  device_queue_create_info.queueCount = queue_family_queue_count;
+  device_queue_create_info.pQueuePriorities = nullptr;
+  VkDeviceQueueCreateInfo device_queue_create_infos[1] = 
+    {device_queue_create_info};
+
+  VkDeviceCreateInfo device_create_info = {};
+  device_create_info.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
+  device_create_info.pNext = nullptr;
+  device_create_info.flags = 0;
+  device_create_info.queueCreateInfoCount = 1;
+  device_create_info.pQueueCreateInfos = device_queue_create_infos;
+  device_create_info.enabledLayerCount = 0;
+  device_create_info.ppEnabledLayerNames = nullptr;
+  device_create_info.enabledExtensionCount = 0;
+  device_create_info.ppEnabledExtensionNames = nullptr;
+  device_create_info.pEnabledFeatures = &supported_features;
+
+  VkDevice device;
+  std::cout << "Creating device..." << std::endl;
+  res = vkCreateDevice(physical_devices[0],
+   		       &device_create_info,
+   		       nullptr,
+   		       &device);
+
+  if (res == VK_SUCCESS)
+    std::cout << "Device created successfully!" << std::endl;
+  else
+    std::cout << "Failed to create device..." << std::endl;
+
+  std::cout << "Destroying device..." << std::endl;
+  vkDestroyDevice(device, nullptr);
+
   std::cout << "Destroying instance..." << std::endl;
   vkDestroyInstance(inst, nullptr);
   
