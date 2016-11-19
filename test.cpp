@@ -6,10 +6,13 @@
 #define APP_SHORT_NAME     "VulkanTest"
 #define ENGINE_SHORT_NAME  "DummyEngine"
 
-#define SHOW_INSTANCE_LAYERS          false
-#define SHOW_PHYSICAL_DEVICE_LAYERS   false
+#define SHOW_INSTANCE_LAYERS            false
+#define SHOW_PHYSICAL_DEVICE_LAYERS     false
 
-#define ENABLE_STANDARD_VALIDATION    false
+#define SHOW_INSTANCE_EXTENSIONS        false
+#define SHOW_PHYSICAL_DEVICE_EXTENSIONS false
+
+#define ENABLE_STANDARD_VALIDATION      false
 
 int main(int argc, const char* argv[]) {
   VkApplicationInfo app_info = {};
@@ -35,6 +38,25 @@ int main(int argc, const char* argv[]) {
       std::cout << std::endl;
     } else
       std::cout << "No instance layers available." << std::endl;
+  }
+
+  if (SHOW_INSTANCE_EXTENSIONS) {
+    uint32_t inst_ext_count;
+    std::vector<VkExtensionProperties> inst_ext_props;
+    vkEnumerateInstanceExtensionProperties(nullptr,
+					   &inst_ext_count,
+					   nullptr);
+    inst_ext_props.resize(inst_ext_count);
+    vkEnumerateInstanceExtensionProperties(nullptr,
+					   &inst_ext_count,
+					   inst_ext_props.data());
+    if (inst_ext_count != 0) {
+      std::cout << "Instance Extensions:" << std::endl;
+      for (auto& extension : inst_ext_props)
+	std::cout << extension.extensionName << std::endl;
+      std::cout << std::endl;
+    } else
+      std::cout << "No instance extensions available..." << std::endl;
   }
 
   VkInstanceCreateInfo inst_info = {};
@@ -113,6 +135,28 @@ int main(int argc, const char* argv[]) {
     } else
       std::cout << "No device layers available..." << std::endl;
   }
+
+  if (SHOW_PHYSICAL_DEVICE_EXTENSIONS) {
+    uint32_t device_ext_count;
+    std::vector<VkExtensionProperties> device_ext_props;
+    vkEnumerateDeviceExtensionProperties(physical_devices[0],
+					 nullptr,
+					 &device_ext_count,
+					 nullptr);
+    device_ext_props.resize(device_ext_count);
+    vkEnumerateDeviceExtensionProperties(physical_devices[0],
+					 nullptr,
+					 &device_ext_count,
+					 device_ext_props.data());
+    if (device_ext_count != 0) {
+      std::cout << "\nDevice Extensions:" << std::endl;
+      for (auto& extension : device_ext_props)
+	std::cout << extension.extensionName << std::endl;
+      std::cout << std::endl;
+    } else
+      std::cout << "No device extensions available..." << std::endl;
+  }
+
 
   uint32_t queue_family_property_count;
   std::vector<VkQueueFamilyProperties> queue_family_properties;
