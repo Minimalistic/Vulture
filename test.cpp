@@ -45,6 +45,8 @@ int main(int argc, const char* argv[]) {
   inst_info.enabledExtensionCount = 0;
   inst_info.ppEnabledExtensionNames = nullptr;
   if (ENABLE_STANDARD_VALIDATION) {
+    std::cout << "Enabling LunarG standard validation instance layer..." 
+	      << std::endl;
     const char* enabled_layer_names[] = {
       "VK_LAYER_LUNARG_standard_validation"
     };
