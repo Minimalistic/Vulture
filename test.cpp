@@ -138,7 +138,7 @@ int main(int argc, const char* argv[]) {
   VkPhysicalDeviceFeatures supported_features;
   vkGetPhysicalDeviceFeatures(physical_devices[0], &supported_features);
 
-  float queue_priorities[queue_family_queue_count] = {};
+  std::vector<float> queue_priorities(queue_family_queue_count, 0.0);
   VkDeviceQueueCreateInfo device_queue_create_info = {};
   device_queue_create_info.sType = 
     VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
@@ -146,7 +146,7 @@ int main(int argc, const char* argv[]) {
   device_queue_create_info.flags = 0;
   device_queue_create_info.queueFamilyIndex = queue_family_idx;
   device_queue_create_info.queueCount = queue_family_queue_count;
-  device_queue_create_info.pQueuePriorities = queue_priorities;
+  device_queue_create_info.pQueuePriorities = queue_priorities.data();
   VkDeviceQueueCreateInfo device_queue_create_infos[1] = 
     {device_queue_create_info};
 
