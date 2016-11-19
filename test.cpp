@@ -1,5 +1,6 @@
 #include <iostream>
 #include <vector>
+#include <mutex>
 
 #include <vulkan/vulkan.h>
 
@@ -13,6 +14,9 @@
 #define SHOW_PHYSICAL_DEVICE_EXTENSIONS false
 
 #define ENABLE_STANDARD_VALIDATION      false
+
+std::mutex device_mutex;
+std::mutex instance_mutex;
 
 int main(int argc, const char* argv[]) {
   VkApplicationInfo app_info = {};
@@ -220,12 +224,30 @@ int main(int argc, const char* argv[]) {
   else
     std::cout << "Failed to create device..." << std::endl;
 
-  std::cout << "Destroying device..." << std::endl;
-  vkDeviceWaitIdle(device);
-  vkDestroyDevice(device, nullptr);
+  std::cout << "Waiting for device to idle..." << std::endl;
+  res = vkDeviceWaitIdle(device);
+  if (res == VK_SUCCESS)
+    std::cout << "Device is idle..." << std::endl;
+  else if (res == VK_ERROR_OUT_OF_HOST_MEMORY)
+    std::cout << "Wait failed: no available host memory..." << std::endl;
+  else if (res == VK_ERROR_OUT_OF_DEVICE_MEMORY)
+    std::cout << "Wait failed: no available device memory..." << std::endl;
+  else if (res == VK_ERROR_DEVICE_LOST)
+    std::cout << "Wait failed: device was lost..." << std::endl;
 
-  std::cout << "Destroying instance..." << std::endl;
-  vkDestroyInstance(inst, nullptr);
+  // Synchronize access to device while destroying it
+  {
+    std::lock_guard<std::mutex> lock(device_mutex);
+    std::cout << "Destroying device..." << std::endl;
+    vkDestroyDevice(device, nullptr);
+  }
+
+  // Synchronize instance while destroying it
+  {
+    std::lock_guard<std::mutex> lock(instance_mutex);
+    std::cout << "Destroying instance..." << std::endl;
+    vkDestroyInstance(inst, nullptr);
+  }
 
   return 0;
 }
