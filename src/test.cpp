@@ -177,7 +177,7 @@ int main(int argc, const char* argv[]) {
   vkGetPhysicalDeviceMemoryProperties(physical_devices[0],
 				      &physical_device_mem_props);
   std::cout << "Type\tHeap\tSize" << std::endl;
-  for (int i = 0; i < physical_device_mem_props.memoryTypeCount; i++) {
+  for (uint32_t i = 0; i < physical_device_mem_props.memoryTypeCount; i++) {
     VkMemoryType& memType = physical_device_mem_props.memoryTypes[i];
     VkMemoryHeap& memHeap = physical_device_mem_props.memoryHeaps[memType.heapIndex];
     std::cout << i << "\t" << memType.heapIndex << "\t" << memHeap.size << std::endl;
