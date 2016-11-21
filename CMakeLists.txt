@@ -3,7 +3,12 @@
 # to the root binary directory of the project as ${VulkanTest_BINARY_DIR}.
 cmake_minimum_required (VERSION 2.8.11)
 project (VulkanTest)
-add_executable(VulkanTest test.cpp)
+set (VulkanTest_VERSION_MAJOR 1)
+set (VulkanTest_VERSION_MINOR 0)
+
+file(GLOB SOURCE_DIR "src/*.cpp")
+include_directories(include)
+add_executable(VulkanTest ${SOURCE_DIR})
 
 # Enable C++11 support
 target_compile_features(VulkanTest PRIVATE cxx_range_for)

@@ -4,6 +4,8 @@
 
 #include <vulkan/vulkan.h>
 
+#include "allocator.hpp"
+
 #define APP_SHORT_NAME     "VulkanTest"
 #define ENGINE_SHORT_NAME  "DummyEngine"
 
@@ -14,6 +16,8 @@
 #define SHOW_PHYSICAL_DEVICE_EXTENSIONS false
 
 #define ENABLE_STANDARD_VALIDATION      false
+
+#define CUSTOM_ALLOCATOR                false
 
 std::mutex device_mutex;
 std::mutex instance_mutex;
@@ -86,9 +90,16 @@ int main(int argc, const char* argv[]) {
   VkInstance inst;
   VkResult res;
 
+  allocator my_alloc;
+  VkAllocationCallbacks alloc_callbacks = my_alloc;
+  
+  if (CUSTOM_ALLOCATOR)
+    std::cout << "Using custom allocator..." << std::endl;
   std::cout << "Creating " << APP_SHORT_NAME 
 	    << " application instance..." << std::endl;
-  res = vkCreateInstance(&inst_info, nullptr, &inst);
+  res = vkCreateInstance(&inst_info,
+			 CUSTOM_ALLOCATOR ? &alloc_callbacks : nullptr,
+			 &inst);
   if (res == VK_SUCCESS)
     std::cout << "Instance created successfully!" << std::endl;
   else
@@ -161,6 +172,16 @@ int main(int argc, const char* argv[]) {
       std::cout << "No device extensions available..." << std::endl;
   }
 
+  std::cout << "Getting physical device memory properties..." << std::endl;
+  VkPhysicalDeviceMemoryProperties physical_device_mem_props;
+  vkGetPhysicalDeviceMemoryProperties(physical_devices[0],
+				      &physical_device_mem_props);
+  std::cout << "Type\tHeap\tSize" << std::endl;
+  for (int i = 0; i < physical_device_mem_props.memoryTypeCount; i++) {
+    VkMemoryType& memType = physical_device_mem_props.memoryTypes[i];
+    VkMemoryHeap& memHeap = physical_device_mem_props.memoryHeaps[memType.heapIndex];
+    std::cout << i << "\t" << memType.heapIndex << "\t" << memHeap.size << std::endl;
+  }
 
   uint32_t queue_family_property_count;
   std::vector<VkQueueFamilyProperties> queue_family_properties;
@@ -216,7 +237,7 @@ int main(int argc, const char* argv[]) {
   std::cout << "Creating device..." << std::endl;
   res = vkCreateDevice(physical_devices[0],
    		       &device_create_info,
-   		       nullptr,
+   		       CUSTOM_ALLOCATOR ? &alloc_callbacks : nullptr,
    		       &device);
 
   if (res == VK_SUCCESS)
