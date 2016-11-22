@@ -77,13 +77,13 @@ void allocator::myFree(void* pMemory) {
 }
 
 void allocator::myLogInternalAllocate(size_t size,
-			      VkInternalAllocationType allocationType,
-			      VkSystemAllocationScope allocationScope) {
+				      VkInternalAllocationType allocationType,
+				      VkSystemAllocationScope allocationScope) {
   std::cout << "Vulkan allocated " << size << " bytes" << std::endl;
 }
 
 void allocator::myLogInternalFree(size_t size,
-			  VkInternalAllocationType allocationType,
-			  VkSystemAllocationScope allocationScope) {
+				  VkInternalAllocationType allocationType,
+				  VkSystemAllocationScope allocationScope) {
   std::cout << "Vulkan freed " << size << " bytes" << std::endl;
 }
