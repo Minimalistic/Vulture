@@ -1,7 +1,5 @@
 #include "allocator.hpp"
 
-#include "util.hpp"
-
 #include <cstdlib>
 #include <iostream>
 
@@ -52,7 +50,7 @@ void VKAPI_CALL allocator::logInternalFree(void* pUserData,
 void* allocator::myAllocate(size_t size,
 			    size_t alignment,
 			    VkSystemAllocationScope allocationScope) {
-  #if IS_WIN32
+  #if defined(WIN32) || defined(_WIN32) || defined(__WIN32) && !defined(__CYGWIN__)
   return _aligned_malloc(size, alignment);
   #else
   return aligned_alloc(alignment, size);
@@ -63,7 +61,7 @@ void* allocator::myReallocate(void* pOriginal,
 			      size_t size,
 			      size_t alignment,
 			      VkSystemAllocationScope allocationScope) {
-  #if IS_WIN32
+  #if defined(WIN32) || defined(_WIN32) || defined(__WIN32) && !defined(__CYGWIN__)
   return _aligned_realloc(pOriginal, size, alignment);
   #else
   return realloc(pOriginal, size);
@@ -71,7 +69,7 @@ void* allocator::myReallocate(void* pOriginal,
 }
 
 void allocator::myFree(void* pMemory) {
-  #if IS_WIN32
+  #if defined(WIN32) || defined(_WIN32) || defined(__WIN32) && !defined(__CYGWIN__)
   _aligned_free(pMemory);
   #else
   free(pMemory);
@@ -79,13 +77,13 @@ void allocator::myFree(void* pMemory) {
 }
 
 void allocator::myLogInternalAllocate(size_t size,
-				      VkInternalAllocationType allocationType,
-				      VkSystemAllocationScope allocationScope) {
+			      VkInternalAllocationType allocationType,
+			      VkSystemAllocationScope allocationScope) {
   std::cout << "Vulkan allocated " << size << " bytes" << std::endl;
 }
 
 void allocator::myLogInternalFree(size_t size,
-				  VkInternalAllocationType allocationType,
-				  VkSystemAllocationScope allocationScope) {
+			  VkInternalAllocationType allocationType,
+			  VkSystemAllocationScope allocationScope) {
   std::cout << "Vulkan freed " << size << " bytes" << std::endl;
 }
