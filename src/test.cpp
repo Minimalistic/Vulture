@@ -245,6 +245,33 @@ int main(int argc, const char* argv[]) {
   else
     std::cout << "Failed to create device..." << std::endl;
 
+  VkBufferCreateInfo buf_create_info = {};
+  buf_create_info.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+  buf_create_info.pNext = nullptr;
+  buf_create_info.flags = 0;
+  buf_create_info.size = 1024*1024;
+  buf_create_info.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT |
+    VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+  buf_create_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+  buf_create_info.queueFamilyIndexCount = 0;
+  buf_create_info.pQueueFamilyIndices = nullptr;
+  
+  VkBuffer buffer;
+  std::cout << "Creating buffer..." << std::endl;
+  res = vkCreateBuffer(device,
+		       &buf_create_info,
+		       CUSTOM_ALLOCATOR ? &alloc_callbacks : nullptr,
+		       &buffer);
+  if (res == VK_SUCCESS)
+    std::cout << "Buffer created successfully!" << std::endl;
+  else
+    std::cout << "Failed to create buffer..." << std::endl;
+
+  std::cout << "Destroying buffer..." << std::endl;
+  vkDestroyBuffer(device,
+		  buffer,
+		  CUSTOM_ALLOCATOR ? &alloc_callbacks : nullptr);
+
   std::cout << "Waiting for device to idle..." << std::endl;
   res = vkDeviceWaitIdle(device);
   if (res == VK_SUCCESS)
@@ -260,14 +287,16 @@ int main(int argc, const char* argv[]) {
   {
     std::lock_guard<std::mutex> lock(device_mutex);
     std::cout << "Destroying device..." << std::endl;
-    vkDestroyDevice(device, nullptr);
+    vkDestroyDevice(device,
+		    CUSTOM_ALLOCATOR ? &alloc_callbacks : nullptr);
   }
 
   // Synchronize instance while destroying it
   {
     std::lock_guard<std::mutex> lock(instance_mutex);
     std::cout << "Destroying instance..." << std::endl;
-    vkDestroyInstance(inst, nullptr);
+    vkDestroyInstance(inst,
+		      CUSTOM_ALLOCATOR ? &alloc_callbacks : nullptr);
   }
 
   return 0;
