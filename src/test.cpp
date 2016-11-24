@@ -285,7 +285,7 @@ int main(int argc, const char* argv[]) {
   img_create_info.imageType = VK_IMAGE_TYPE_2D;
   img_create_info.format = VK_FORMAT_R8G8B8A8_UNORM;
   img_create_info.extent = { .width = 1024, .height = 1024, .depth = 1 };
-  img_create_info.mipLevels = 10;
+  img_create_info.mipLevels = 1;
   img_create_info.arrayLayers = 1;
   img_create_info.samples = VK_SAMPLE_COUNT_1_BIT;
   img_create_info.tiling = VK_IMAGE_TILING_OPTIMAL;  
@@ -303,8 +303,31 @@ int main(int argc, const char* argv[]) {
 		      &image);
   if (res == VK_SUCCESS)
     std::cout << "Image created successfully!" << std::endl;
+  else if (res == VK_ERROR_OUT_OF_HOST_MEMORY)
+    std::cout << "Failed to create image: out of host memory" << std::endl;
+  else if (res == VK_ERROR_OUT_OF_DEVICE_MEMORY)
+    std::cout << "Failed to create image: out of device memory" << std::endl;
+  else if (res == VK_ERROR_VALIDATION_FAILED_EXT)
+    std::cout << "Failed to create image: validation failed" << std::endl;
   else
-    std::cout << "Failed to create image..." << std::endl;
+    std::cout << "Failed to create image: unknown error" << std::endl;
+
+  VkImageSubresource img_subresource = {};
+  img_subresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+  img_subresource.mipLevel = 0;
+  img_subresource.arrayLayer = 0;
+
+  VkSubresourceLayout subresource_layout;
+  std::cout << "Getting subresource layout for image..."
+	    << std::endl;
+  vkGetImageSubresourceLayout(device,
+			      image,
+			      &img_subresource,
+			      &subresource_layout);
+  std::cout << "Subresource Offset: " << subresource_layout.offset
+	    << std::endl;
+  std::cout << "Subresource Size: " << subresource_layout.size
+	    << std::endl;
 
   // Destroy image
   {
