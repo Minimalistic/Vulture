@@ -22,6 +22,7 @@
 std::mutex device_mutex;
 std::mutex instance_mutex;
 std::mutex buffer_mutex;
+std::mutex buffer_view_mutex;
 std::mutex image_mutex;
 
 int main(int argc, const char* argv[]) {
@@ -268,6 +269,35 @@ int main(int argc, const char* argv[]) {
     std::cout << "Buffer created successfully!" << std::endl;
   else
     std::cout << "Failed to create buffer..." << std::endl;
+
+  VkBufferViewCreateInfo buf_view_create_info = {};
+  buf_view_create_info.sType = VK_STRUCTURE_TYPE_BUFFER_VIEW_CREATE_INFO;
+  buf_view_create_info.pNext = nullptr;
+  buf_view_create_info.flags = 0;
+  buf_view_create_info.buffer = buffer;
+  buf_view_create_info.format = VK_FORMAT_R8G8B8A8_UNORM;
+  buf_view_create_info.offset = 0;
+  buf_view_create_info.range = 1024;
+
+  VkBufferView buffer_view;
+  std::cout << "Creating buffer view..." << std::endl;
+  res = vkCreateBufferView(device,
+			   &buf_view_create_info,
+			   CUSTOM_ALLOCATOR ? &alloc_callbacks : nullptr,
+			   &buffer_view);
+  if (res == VK_SUCCESS)
+    std::cout << "Buffer view created successfully!" << std::endl;
+  else
+    std::cout << "Failed to create buffer view..." << std::endl;
+
+  // Destroy buffer view
+  {
+    std::lock_guard<std::mutex> lock(buffer_view_mutex);
+    std::cout << "Destroying buffer view..." << std::endl;
+    vkDestroyBufferView(device,
+			buffer_view,
+			CUSTOM_ALLOCATOR ? &alloc_callbacks : nullptr);
+  }
 
   // Destroy buffer
   {
