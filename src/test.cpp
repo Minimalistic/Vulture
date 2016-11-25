@@ -284,7 +284,11 @@ int main(int argc, const char* argv[]) {
   img_create_info.flags = 0;
   img_create_info.imageType = VK_IMAGE_TYPE_2D;
   img_create_info.format = VK_FORMAT_R8G8B8A8_UNORM;
-  img_create_info.extent = { .width = 1024, .height = 1024, .depth = 1 };
+  VkExtent3D dimensions;
+  dimensions.width = 1024;
+  dimensions.height = 1024;
+  dimensions.depth = 1;
+  img_create_info.extent = dimensions;
   img_create_info.mipLevels = 1;
   img_create_info.arrayLayers = 1;
   img_create_info.samples = VK_SAMPLE_COUNT_1_BIT;
