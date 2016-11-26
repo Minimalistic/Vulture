@@ -393,7 +393,7 @@ int main(int argc, const char* argv[]) {
   // std::cout << "Creating image view..." << std::endl;
   // res = vkCreateImageView(device,
   // 			  &img_view_create_info,
-  // 			  nullptr,
+  // 			  CUSTOM_ALLOCATOR ? &alloc_callbacks : nullptr,
   // 			  &image_view);
   // if (res == VK_SUCCESS)
   //   std::cout << "Image view created successfully!" << std::endl;
