@@ -1,1 +1,6 @@
-Experiments with Vulkan
+Experiments with Vulkan. Hopefully this will spawn another project.
+
+Vulkan coding tips:
+
+1) Enabling the standard validation layer is a great way to uncover bugs in
+   your code.
