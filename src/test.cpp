@@ -24,6 +24,7 @@ std::mutex instance_mutex;
 std::mutex buffer_mutex;
 std::mutex buffer_view_mutex;
 std::mutex image_mutex;
+std::mutex image_view_mutex;
 
 int main(int argc, const char* argv[]) {
   VkApplicationInfo app_info = {};
@@ -404,6 +405,15 @@ int main(int argc, const char* argv[]) {
   //   std::cout << "Failed to create image view: validation failed" << std::endl;
   // else
   //   std::cout << "Failed to create image view: unknown error" << std::endl;
+
+  // Destroy image view
+  // {
+  //   std::lock_guard<std::mutex> lock(image_view_mutex);
+  //   std::cout << "Destroying image view..." << std::endl;
+  //   vkDestroyImageView(device,
+  // 		       image_view,
+  // 		       CUSTOM_ALLOCATOR ? &alloc_callbacks : nullptr);
+  // }
 
   // Destroy image
   {
