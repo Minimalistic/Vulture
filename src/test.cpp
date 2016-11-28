@@ -25,6 +25,7 @@ std::mutex buffer_mutex;
 std::mutex buffer_view_mutex;
 std::mutex image_mutex;
 std::mutex image_view_mutex;
+std::mutex device_mem_mutex;
 
 int main(int argc, const char* argv[]) {
   VkApplicationInfo app_info = {};
@@ -184,7 +185,8 @@ int main(int argc, const char* argv[]) {
   for (uint32_t i = 0; i < physical_device_mem_props.memoryTypeCount; i++) {
     VkMemoryType& memType = physical_device_mem_props.memoryTypes[i];
     VkMemoryHeap& memHeap = physical_device_mem_props.memoryHeaps[memType.heapIndex];
-    std::cout << i << "\t" << memType.heapIndex << "\t" << memHeap.size << std::endl;
+    std::cout << i << "\t" << memType.heapIndex << "\t"
+	      << memHeap.size << std::endl;
   }
 
   uint32_t queue_family_property_count;
@@ -248,6 +250,23 @@ int main(int argc, const char* argv[]) {
     std::cout << "Device created successfully!" << std::endl;
   else
     std::cout << "Failed to create device..." << std::endl;
+
+  VkMemoryAllocateInfo mem_allocate_info = {};
+  mem_allocate_info.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+  mem_allocate_info.pNext = nullptr;
+  mem_allocate_info.allocationSize = 1024*1024;
+  mem_allocate_info.memoryTypeIndex = 0;
+  
+  VkDeviceMemory device_mem;
+  std::cout << "Allocating device memory..." << std::endl;
+  res = vkAllocateMemory(device,
+			 &mem_allocate_info,
+			 CUSTOM_ALLOCATOR ? &alloc_callbacks : nullptr,
+			 &device_mem);
+  if (res == VK_SUCCESS)
+    std::cout << "Device memory allocated successfully!" << std::endl;
+  else
+    std::cout << "Failed to allocate device memory..." << std::endl;
 
   VkBufferCreateInfo buf_create_info = {};
   buf_create_info.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
@@ -422,6 +441,15 @@ int main(int argc, const char* argv[]) {
     vkDestroyImage(device,
 		   image,
 		   CUSTOM_ALLOCATOR ? &alloc_callbacks : nullptr);
+  }
+
+  // Free memory
+  {
+    std::lock_guard<std::mutex> lock(device_mem_mutex);
+    std::cout << "Freeing device memory..." << std::endl;
+    vkFreeMemory(device,
+		 device_mem,
+		 CUSTOM_ALLOCATOR ? &alloc_callbacks : nullptr);
   }
 
   std::cout << "Waiting for device to idle..." << std::endl;
