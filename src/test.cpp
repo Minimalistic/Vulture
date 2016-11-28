@@ -19,6 +19,8 @@
 
 #define CUSTOM_ALLOCATOR                false
 
+#define HOST_COHERENT(X) ((X & VK_MEMORY_PROPERTY_HOST_COHERENT_BIT) != 0)
+
 std::mutex device_mutex;
 std::mutex instance_mutex;
 std::mutex buffer_mutex;
@@ -181,12 +183,16 @@ int main(int argc, const char* argv[]) {
   VkPhysicalDeviceMemoryProperties physical_device_mem_props;
   vkGetPhysicalDeviceMemoryProperties(physical_devices[0],
 				      &physical_device_mem_props);
-  std::cout << "Type\tHeap\tSize" << std::endl;
+  std::printf("%-10s%-10s%-20s%-10s\n",
+	      "Type", "Heap", "Size", "Host_Coherent");
   for (uint32_t i = 0; i < physical_device_mem_props.memoryTypeCount; i++) {
     VkMemoryType& memType = physical_device_mem_props.memoryTypes[i];
     VkMemoryHeap& memHeap = physical_device_mem_props.memoryHeaps[memType.heapIndex];
-    std::cout << i << "\t" << memType.heapIndex << "\t"
-	      << memHeap.size << std::endl;
+    std::printf("%-10i%-10i%-20lu%-10s\n",
+		i,
+		memType.heapIndex,
+		memHeap.size,
+		HOST_COHERENT(memType.propertyFlags) ? "Y" : "N");
   }
 
   uint32_t queue_family_property_count;
