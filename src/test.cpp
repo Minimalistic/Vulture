@@ -27,7 +27,7 @@ std::mutex buffer_mutex;
 std::mutex buffer_view_mutex;
 std::mutex image_mutex;
 std::mutex image_view_mutex;
-std::mutex device_mem_mutex;
+std::mutex memory_mutex;
 
 int main(int argc, const char* argv[]) {
   VkApplicationInfo app_info = {};
@@ -263,16 +263,41 @@ int main(int argc, const char* argv[]) {
   mem_allocate_info.allocationSize = 1024*1024;
   mem_allocate_info.memoryTypeIndex = 0;
   
-  VkDeviceMemory device_mem;
+  VkDeviceMemory memory;
   std::cout << "Allocating device memory..." << std::endl;
   res = vkAllocateMemory(device,
 			 &mem_allocate_info,
 			 CUSTOM_ALLOCATOR ? &alloc_callbacks : nullptr,
-			 &device_mem);
+			 &memory);
   if (res == VK_SUCCESS)
     std::cout << "Device memory allocated successfully!" << std::endl;
   else
     std::cout << "Failed to allocate device memory..." << std::endl;
+
+  void* data = nullptr;
+  // Map memory
+  {
+    std::cout << "Mapping device memory..." << std::endl;
+    std::lock_guard<std::mutex> lock(memory_mutex);
+    res = vkMapMemory(device,
+		      memory,
+		      0,
+		      VK_WHOLE_SIZE,
+		      0,
+		      &data);
+    if (res == VK_SUCCESS)
+      std::cout << "Memory mapped successfully!" << std::endl;
+    else
+      std::cout << "Failed to map memory..." << std::endl;
+  }
+
+  // Unmap memory
+  {
+    std::lock_guard<std::mutex> lock(memory_mutex);
+    std::cout << "Unmapping device memory..." << std::endl;
+    vkUnmapMemory(device,
+		  memory);
+  }
 
   VkBufferCreateInfo buf_create_info = {};
   buf_create_info.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
@@ -451,10 +476,10 @@ int main(int argc, const char* argv[]) {
 
   // Free memory
   {
-    std::lock_guard<std::mutex> lock(device_mem_mutex);
+    std::lock_guard<std::mutex> lock(memory_mutex);
     std::cout << "Freeing device memory..." << std::endl;
     vkFreeMemory(device,
-		 device_mem,
+		 memory,
 		 CUSTOM_ALLOCATOR ? &alloc_callbacks : nullptr);
   }
 
