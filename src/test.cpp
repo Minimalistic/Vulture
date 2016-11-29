@@ -27,7 +27,8 @@ std::mutex buffer_mutex;
 std::mutex buffer_view_mutex;
 std::mutex image_mutex;
 std::mutex image_view_mutex;
-std::mutex memory_mutex;
+std::mutex img_memory_mutex;
+std::mutex buf_memory_mutex;
 
 int main(int argc, const char* argv[]) {
   VkApplicationInfo app_info = {};
@@ -257,48 +258,6 @@ int main(int argc, const char* argv[]) {
   else
     std::cout << "Failed to create device..." << std::endl;
 
-  VkMemoryAllocateInfo mem_allocate_info = {};
-  mem_allocate_info.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-  mem_allocate_info.pNext = nullptr;
-  mem_allocate_info.allocationSize = 1024*1024;
-  mem_allocate_info.memoryTypeIndex = 0;
-  
-  VkDeviceMemory memory;
-  std::cout << "Allocating device memory..." << std::endl;
-  res = vkAllocateMemory(device,
-			 &mem_allocate_info,
-			 CUSTOM_ALLOCATOR ? &alloc_callbacks : nullptr,
-			 &memory);
-  if (res == VK_SUCCESS)
-    std::cout << "Device memory allocated successfully!" << std::endl;
-  else
-    std::cout << "Failed to allocate device memory..." << std::endl;
-
-  void* data = nullptr;
-  // Map memory
-  {
-    std::cout << "Mapping device memory..." << std::endl;
-    std::lock_guard<std::mutex> lock(memory_mutex);
-    res = vkMapMemory(device,
-		      memory,
-		      0,
-		      VK_WHOLE_SIZE,
-		      0,
-		      &data);
-    if (res == VK_SUCCESS)
-      std::cout << "Memory mapped successfully!" << std::endl;
-    else
-      std::cout << "Failed to map memory..." << std::endl;
-  }
-
-  // Unmap memory
-  {
-    std::lock_guard<std::mutex> lock(memory_mutex);
-    std::cout << "Unmapping device memory..." << std::endl;
-    vkUnmapMemory(device,
-		  memory);
-  }
-
   VkBufferCreateInfo buf_create_info = {};
   buf_create_info.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
   buf_create_info.pNext = nullptr;
@@ -322,51 +281,11 @@ int main(int argc, const char* argv[]) {
   else
     std::cout << "Failed to create buffer..." << std::endl;
 
-  // TODO: Bind memory to buffer, uncomment below
-
-  // VkBufferViewCreateInfo buf_view_create_info = {};
-  // buf_view_create_info.sType = VK_STRUCTURE_TYPE_BUFFER_VIEW_CREATE_INFO;
-  // buf_view_create_info.pNext = nullptr;
-  // buf_view_create_info.flags = 0;
-  // buf_view_create_info.buffer = buffer;
-  // buf_view_create_info.format = VK_FORMAT_R8G8B8A8_UNORM;
-  // buf_view_create_info.offset = 0;
-  // buf_view_create_info.range = 1024;
-
-  // VkBufferView buffer_view;
-  // std::cout << "Creating buffer view..." << std::endl;
-  // res = vkCreateBufferView(device,
-  // 			   &buf_view_create_info,
-  // 			   CUSTOM_ALLOCATOR ? &alloc_callbacks : nullptr,
-  // 			   &buffer_view);
-  // if (res == VK_SUCCESS)
-  //   std::cout << "Buffer view created successfully!" << std::endl;
-  // else
-  //   std::cout << "Failed to create buffer view..." << std::endl;
-
-  // Destroy buffer view
-  // {
-  //   std::lock_guard<std::mutex> lock(buffer_view_mutex);
-  //   std::cout << "Destroying buffer view..." << std::endl;
-  //   vkDestroyBufferView(device,
-  // 			buffer_view,
-  // 			CUSTOM_ALLOCATOR ? &alloc_callbacks : nullptr);
-  // }
-
-  // Destroy buffer
-  {
-    std::lock_guard<std::mutex> lock(buffer_mutex);
-    std::cout << "Destroying buffer..." << std::endl;
-    vkDestroyBuffer(device,
-		    buffer,
-		    CUSTOM_ALLOCATOR ? &alloc_callbacks : nullptr);
-  }
-
   VkImageCreateInfo img_create_info = {};
   img_create_info.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
   img_create_info.pNext = nullptr;
   img_create_info.flags = 0;
-  img_create_info.imageType = VK_IMAGE_TYPE_2D;
+  img_create_info.imageType = VK_IMAGE_TYPE_3D;
   img_create_info.format = VK_FORMAT_R8G8B8A8_UNORM;
   VkExtent3D dimensions = {};
   dimensions.width = 1024;
@@ -417,6 +336,162 @@ int main(int argc, const char* argv[]) {
   std::cout << "Subresource Size: " << subresource_layout.size
 	    << std::endl;
 
+  uint32_t buf_mem_type_idx = UINT32_MAX;
+  uint32_t img_mem_type_idx = UINT32_MAX;
+  VkMemoryRequirements buf_mem_requirements = {};
+  VkMemoryRequirements img_mem_requirements = {};
+  std::cout << "Fetching memory requirements..." << std::endl;
+  vkGetBufferMemoryRequirements(device, buffer, &buf_mem_requirements);
+  vkGetImageMemoryRequirements(device, image, &img_mem_requirements);
+  for (uint32_t cur = 0;
+       cur < physical_device_mem_props.memoryTypeCount;
+       cur++) {
+    VkMemoryType& mem_type = physical_device_mem_props.memoryTypes[cur];
+    VkMemoryHeap& mem_heap =
+      physical_device_mem_props.memoryHeaps[mem_type.heapIndex];
+    
+    if (mem_heap.size <= 0) continue;
+    
+    if (buf_mem_type_idx == UINT32_MAX &&
+	buf_mem_requirements.size <= mem_heap.size &&
+	(buf_mem_requirements.memoryTypeBits & (1 << cur)))
+      buf_mem_type_idx = cur;
+    
+    if (img_mem_type_idx == UINT32_MAX &&
+	img_mem_requirements.size <= mem_heap.size &&
+	(img_mem_requirements.memoryTypeBits & (1 << cur)))
+      img_mem_type_idx = cur;
+  }
+
+  if (img_mem_type_idx != UINT32_MAX)
+    std::cout << "Found suitable memory type for image: "
+	      << img_mem_type_idx << std::endl;
+  else
+    std::cout << "Could not find a suitable memory type for image..."
+	      << std::endl;
+
+  if (buf_mem_type_idx != UINT32_MAX)
+    std::cout << "Found suitable memory type for buffer: " << buf_mem_type_idx
+	      << std::endl;
+  else
+    std::cout << "Could not find a suitable memory type for buffer..."
+	      << std::endl;
+  
+  VkMemoryAllocateInfo buf_mem_allocate_info = {};
+  buf_mem_allocate_info.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+  buf_mem_allocate_info.pNext = nullptr;
+  buf_mem_allocate_info.allocationSize = buf_mem_requirements.size;
+  buf_mem_allocate_info.memoryTypeIndex = buf_mem_type_idx;
+  
+  VkDeviceMemory buf_memory;
+  std::cout << "Allocating buffer memory..." << std::endl;
+  res = vkAllocateMemory(device,
+			 &buf_mem_allocate_info,
+			 CUSTOM_ALLOCATOR ? &alloc_callbacks : nullptr,
+			 &buf_memory);
+  if (res == VK_SUCCESS)
+    std::cout << "Buffer memory allocated successfully!" << std::endl;
+  else
+    std::cout << "Failed to allocate buffer memory..." << std::endl;
+
+  VkMemoryAllocateInfo img_mem_allocate_info = {};
+  img_mem_allocate_info.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+  img_mem_allocate_info.pNext = nullptr;
+  img_mem_allocate_info.allocationSize = img_mem_requirements.size;
+  img_mem_allocate_info.memoryTypeIndex = img_mem_type_idx;
+  
+  VkDeviceMemory img_memory;
+  std::cout << "Allocating image memory..." << std::endl;
+  res = vkAllocateMemory(device,
+			 &img_mem_allocate_info,
+			 CUSTOM_ALLOCATOR ? &alloc_callbacks : nullptr,
+			 &img_memory);
+  if (res == VK_SUCCESS)
+    std::cout << "Image memory allocated successfully!" << std::endl;
+  else
+    std::cout << "Failed to allocate image memory..." << std::endl;
+
+  void* img_data = nullptr;
+  // Map image memory
+  {
+    std::cout << "Mapping image memory..." << std::endl;
+    std::lock_guard<std::mutex> lock(img_memory_mutex);
+    res = vkMapMemory(device,
+		      img_memory,
+		      0,
+		      VK_WHOLE_SIZE,
+		      0,
+		      &img_data);
+    if (res == VK_SUCCESS)
+      std::cout << "Image memory mapped successfully!" << std::endl;
+    else
+      std::cout << "Failed to map image memory..." << std::endl;
+  }
+
+  // Unmap image memory
+  {
+    std::lock_guard<std::mutex> lock(img_memory_mutex);
+    std::cout << "Unmapping image memory..." << std::endl;
+    vkUnmapMemory(device,
+		  img_memory);
+  }
+  
+  void* buf_data = nullptr;
+  // Map buffer memory
+  {
+    std::cout << "Mapping buffer memory..." << std::endl;
+    std::lock_guard<std::mutex> lock(buf_memory_mutex);
+    res = vkMapMemory(device,
+		      buf_memory,
+		      0,
+		      VK_WHOLE_SIZE,
+		      0,
+		      &buf_data);
+    if (res == VK_SUCCESS)
+      std::cout << "Buffer memory mapped successfully!" << std::endl;
+    else
+      std::cout << "Failed to map buffer memory..." << std::endl;
+  }
+
+  // Unmap buffer memory
+  {
+    std::lock_guard<std::mutex> lock(buf_memory_mutex);
+    std::cout << "Unmapping buffer memory..." << std::endl;
+    vkUnmapMemory(device,
+		  buf_memory);
+  }
+
+  // TODO: Bind memory to buffer, uncomment below
+
+  // VkBufferViewCreateInfo buf_view_create_info = {};
+  // buf_view_create_info.sType = VK_STRUCTURE_TYPE_BUFFER_VIEW_CREATE_INFO;
+  // buf_view_create_info.pNext = nullptr;
+  // buf_view_create_info.flags = 0;
+  // buf_view_create_info.buffer = buffer;
+  // buf_view_create_info.format = VK_FORMAT_R8G8B8A8_UNORM;
+  // buf_view_create_info.offset = 0;
+  // buf_view_create_info.range = 1024;
+
+  // VkBufferView buffer_view;
+  // std::cout << "Creating buffer view..." << std::endl;
+  // res = vkCreateBufferView(device,
+  // 			   &buf_view_create_info,
+  // 			   CUSTOM_ALLOCATOR ? &alloc_callbacks : nullptr,
+  // 			   &buffer_view);
+  // if (res == VK_SUCCESS)
+  //   std::cout << "Buffer view created successfully!" << std::endl;
+  // else
+  //   std::cout << "Failed to create buffer view..." << std::endl;
+
+  // Destroy buffer view
+  // {
+  //   std::lock_guard<std::mutex> lock(buffer_view_mutex);
+  //   std::cout << "Destroying buffer view..." << std::endl;
+  //   vkDestroyBufferView(device,
+  // 			buffer_view,
+  // 			CUSTOM_ALLOCATOR ? &alloc_callbacks : nullptr);
+  // }
+
   // TODO: Bind memory to image, uncomment below
 
   // VkImageViewCreateInfo img_view_create_info = {};
@@ -465,6 +540,25 @@ int main(int argc, const char* argv[]) {
   // 		       CUSTOM_ALLOCATOR ? &alloc_callbacks : nullptr);
   // }
 
+  // Free buffer memory
+  {
+    std::lock_guard<std::mutex> lock(buf_memory_mutex);
+    std::cout << "Freeing buffer memory..." << std::endl;
+    vkFreeMemory(device,
+		 buf_memory,
+		 CUSTOM_ALLOCATOR ? &alloc_callbacks : nullptr);
+  }
+
+  // Free image memory
+  {
+    std::lock_guard<std::mutex> lock(img_memory_mutex);
+    std::cout << "Freeing image memory..." << std::endl;
+    vkFreeMemory(device,
+		 img_memory,
+		 CUSTOM_ALLOCATOR ? &alloc_callbacks : nullptr);
+  }
+
+
   // Destroy image
   {
     std::lock_guard<std::mutex> lock(image_mutex);
@@ -474,13 +568,13 @@ int main(int argc, const char* argv[]) {
 		   CUSTOM_ALLOCATOR ? &alloc_callbacks : nullptr);
   }
 
-  // Free memory
+  // Destroy buffer
   {
-    std::lock_guard<std::mutex> lock(memory_mutex);
-    std::cout << "Freeing device memory..." << std::endl;
-    vkFreeMemory(device,
-		 memory,
-		 CUSTOM_ALLOCATOR ? &alloc_callbacks : nullptr);
+    std::lock_guard<std::mutex> lock(buffer_mutex);
+    std::cout << "Destroying buffer..." << std::endl;
+    vkDestroyBuffer(device,
+		    buffer,
+		    CUSTOM_ALLOCATOR ? &alloc_callbacks : nullptr);
   }
 
   std::cout << "Waiting for device to idle..." << std::endl;
