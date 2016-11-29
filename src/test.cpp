@@ -20,6 +20,7 @@
 #define CUSTOM_ALLOCATOR                false
 
 #define HOST_COHERENT(X) ((X & VK_MEMORY_PROPERTY_HOST_COHERENT_BIT) != 0)
+#define HOST_VISIBLE(X)  ((X & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) != 0)
 
 std::mutex device_mutex;
 std::mutex instance_mutex;
@@ -184,16 +185,17 @@ int main(int argc, const char* argv[]) {
   VkPhysicalDeviceMemoryProperties physical_device_mem_props;
   vkGetPhysicalDeviceMemoryProperties(physical_devices[0],
 				      &physical_device_mem_props);
-  std::printf("%-10s%-10s%-20s%-10s\n",
-	      "Type", "Heap", "Size", "Host_Coherent");
+  std::printf("%-10s%-10s%-20s%-20s%-20s\n",
+	      "Type", "Heap", "Size", "Host_Coherent", "Host_Visible");
   for (uint32_t i = 0; i < physical_device_mem_props.memoryTypeCount; i++) {
     VkMemoryType& memType = physical_device_mem_props.memoryTypes[i];
     VkMemoryHeap& memHeap = physical_device_mem_props.memoryHeaps[memType.heapIndex];
-    std::printf("%-10i%-10i%-20lu%-10s\n",
+    std::printf("%-10i%-10i%-20lu%-20s%-20s\n",
 		i,
 		memType.heapIndex,
 		(unsigned long) memHeap.size,
-		HOST_COHERENT(memType.propertyFlags) ? "Y" : "N");
+		HOST_COHERENT(memType.propertyFlags) ? "Y" : "N",
+		HOST_VISIBLE(memType.propertyFlags) ? "Y" : "N");
   }
 
   uint32_t queue_family_property_count;
@@ -285,7 +287,7 @@ int main(int argc, const char* argv[]) {
   img_create_info.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
   img_create_info.pNext = nullptr;
   img_create_info.flags = 0;
-  img_create_info.imageType = VK_IMAGE_TYPE_3D;
+  img_create_info.imageType = VK_IMAGE_TYPE_2D;
   img_create_info.format = VK_FORMAT_R8G8B8A8_UNORM;
   VkExtent3D dimensions = {};
   dimensions.width = 1024;
@@ -295,8 +297,10 @@ int main(int argc, const char* argv[]) {
   img_create_info.mipLevels = 1;
   img_create_info.arrayLayers = 1;
   img_create_info.samples = VK_SAMPLE_COUNT_1_BIT;
-  img_create_info.tiling = VK_IMAGE_TILING_OPTIMAL;  
-  img_create_info.usage = VK_IMAGE_USAGE_SAMPLED_BIT;
+  img_create_info.tiling = VK_IMAGE_TILING_LINEAR;  
+  img_create_info.usage = VK_IMAGE_USAGE_SAMPLED_BIT |
+    VK_IMAGE_USAGE_TRANSFER_SRC_BIT |
+    VK_IMAGE_USAGE_TRANSFER_DST_BIT;
   img_create_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
   img_create_info.queueFamilyIndexCount = 0;
   img_create_info.pQueueFamilyIndices = nullptr;
@@ -350,7 +354,10 @@ int main(int argc, const char* argv[]) {
     VkMemoryHeap& mem_heap =
       physical_device_mem_props.memoryHeaps[mem_type.heapIndex];
     
-    if (mem_heap.size <= 0) continue;
+    if (mem_heap.size <= 0 ||
+	!HOST_COHERENT(mem_type.propertyFlags) ||
+	!HOST_VISIBLE(mem_type.propertyFlags))
+      continue;
     
     if (buf_mem_type_idx == UINT32_MAX &&
 	buf_mem_requirements.size <= mem_heap.size &&
