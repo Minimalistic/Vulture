@@ -191,7 +191,7 @@ int main(int argc, const char* argv[]) {
     std::printf("%-10i%-10i%-20lu%-10s\n",
 		i,
 		memType.heapIndex,
-		memHeap.size,
+		(unsigned long) memHeap.size,
 		HOST_COHERENT(memType.propertyFlags) ? "Y" : "N");
   }
 
