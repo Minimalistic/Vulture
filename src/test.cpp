@@ -468,84 +468,108 @@ int main(int argc, const char* argv[]) {
 		  buf_memory);
   }
 
-  // TODO: Bind memory to buffer, uncomment below
+  // Bind buffer memory
+  {
+    std::lock_guard<std::mutex> lock(buffer_mutex);
+    std::cout << "Binding buffer memory..." << std::endl;
+    res = vkBindBufferMemory(device,
+			     buffer,
+			     buf_memory,
+			     0);
+    if (res == VK_SUCCESS)
+      std::cout << "Buffer memory bound successfully!" << std::endl;
+    else
+      std::cout << "Failed to bind buffer memory..." << std::endl;
+  }
 
-  // VkBufferViewCreateInfo buf_view_create_info = {};
-  // buf_view_create_info.sType = VK_STRUCTURE_TYPE_BUFFER_VIEW_CREATE_INFO;
-  // buf_view_create_info.pNext = nullptr;
-  // buf_view_create_info.flags = 0;
-  // buf_view_create_info.buffer = buffer;
-  // buf_view_create_info.format = VK_FORMAT_R8G8B8A8_UNORM;
-  // buf_view_create_info.offset = 0;
-  // buf_view_create_info.range = 1024;
+  // Bind image memory
+  {
+    std::lock_guard<std::mutex> lock(image_mutex);
+    std::cout << "Binding image memory..." << std::endl;
+    res = vkBindImageMemory(device,
+			    image,
+			    img_memory,
+			    0);
+    if (res == VK_SUCCESS)
+      std::cout << "Image memory bound successfully!" << std::endl;
+    else
+      std::cout << "Failed to bind image memory..." << std::endl;
+  }
 
-  // VkBufferView buffer_view;
-  // std::cout << "Creating buffer view..." << std::endl;
-  // res = vkCreateBufferView(device,
-  // 			   &buf_view_create_info,
-  // 			   CUSTOM_ALLOCATOR ? &alloc_callbacks : nullptr,
-  // 			   &buffer_view);
-  // if (res == VK_SUCCESS)
-  //   std::cout << "Buffer view created successfully!" << std::endl;
-  // else
-  //   std::cout << "Failed to create buffer view..." << std::endl;
+  VkBufferViewCreateInfo buf_view_create_info = {};
+  buf_view_create_info.sType = VK_STRUCTURE_TYPE_BUFFER_VIEW_CREATE_INFO;
+  buf_view_create_info.pNext = nullptr;
+  buf_view_create_info.flags = 0;
+  buf_view_create_info.buffer = buffer;
+  buf_view_create_info.format = VK_FORMAT_R8G8B8A8_UNORM;
+  buf_view_create_info.offset = 0;
+  buf_view_create_info.range = 1024;
+
+  VkBufferView buffer_view;
+  std::cout << "Creating buffer view..." << std::endl;
+  res = vkCreateBufferView(device,
+  			   &buf_view_create_info,
+  			   CUSTOM_ALLOCATOR ? &alloc_callbacks : nullptr,
+  			   &buffer_view);
+  if (res == VK_SUCCESS)
+    std::cout << "Buffer view created successfully!" << std::endl;
+  else
+    std::cout << "Failed to create buffer view..." << std::endl;
 
   // Destroy buffer view
-  // {
-  //   std::lock_guard<std::mutex> lock(buffer_view_mutex);
-  //   std::cout << "Destroying buffer view..." << std::endl;
-  //   vkDestroyBufferView(device,
-  // 			buffer_view,
-  // 			CUSTOM_ALLOCATOR ? &alloc_callbacks : nullptr);
-  // }
+  {
+    std::lock_guard<std::mutex> lock(buffer_view_mutex);
+    std::cout << "Destroying buffer view..." << std::endl;
+    vkDestroyBufferView(device,
+  			buffer_view,
+  			CUSTOM_ALLOCATOR ? &alloc_callbacks : nullptr);
+  }
 
-  // TODO: Bind memory to image, uncomment below
-
-  // VkImageViewCreateInfo img_view_create_info = {};
-  // img_view_create_info.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-  // img_view_create_info.pNext = nullptr;
-  // img_view_create_info.flags = 0;
-  // img_view_create_info.image = image;
-  // img_view_create_info.viewType = VK_IMAGE_VIEW_TYPE_2D;
-  // img_view_create_info.format = VK_FORMAT_R8G8B8A8_UNORM;
-  // VkComponentMapping component_mapping = {};
-  // component_mapping.r = VK_COMPONENT_SWIZZLE_IDENTITY;
-  // component_mapping.g = VK_COMPONENT_SWIZZLE_IDENTITY;
-  // component_mapping.b = VK_COMPONENT_SWIZZLE_IDENTITY;
-  // component_mapping.a = VK_COMPONENT_SWIZZLE_IDENTITY;
-  // img_view_create_info.components = component_mapping;
-  // VkImageSubresourceRange subresource_range = {};
-  // subresource_range.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-  // subresource_range.baseMipLevel = 0;
-  // subresource_range.levelCount = 1;
-  // subresource_range.baseArrayLayer = 0;
-  // subresource_range.layerCount = 1;
-  // img_view_create_info.subresourceRange = subresource_range;
-  // VkImageView image_view;
-  // std::cout << "Creating image view..." << std::endl;
-  // res = vkCreateImageView(device,
-  // 			  &img_view_create_info,
-  // 			  CUSTOM_ALLOCATOR ? &alloc_callbacks : nullptr,
-  // 			  &image_view);
-  // if (res == VK_SUCCESS)
-  //   std::cout << "Image view created successfully!" << std::endl;
-  // else if (res == VK_ERROR_OUT_OF_HOST_MEMORY)
-  //   std::cout << "Failed to create image view: out of host memory" << std::endl;
-  // else if (res == VK_ERROR_OUT_OF_DEVICE_MEMORY)
-  //   std::cout << "Failed to create image view: out of device memory" << std::endl;
-  // else if (res == VK_ERROR_VALIDATION_FAILED_EXT)
-  //   std::cout << "Failed to create image view: validation failed" << std::endl;
-  // else
-  //   std::cout << "Failed to create image view: unknown error" << std::endl;
+  VkImageViewCreateInfo img_view_create_info = {};
+  img_view_create_info.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+  img_view_create_info.pNext = nullptr;
+  img_view_create_info.flags = 0;
+  img_view_create_info.image = image;
+  img_view_create_info.viewType = VK_IMAGE_VIEW_TYPE_2D;
+  img_view_create_info.format = VK_FORMAT_R8G8B8A8_UNORM;
+  VkComponentMapping component_mapping = {};
+  component_mapping.r = VK_COMPONENT_SWIZZLE_IDENTITY;
+  component_mapping.g = VK_COMPONENT_SWIZZLE_IDENTITY;
+  component_mapping.b = VK_COMPONENT_SWIZZLE_IDENTITY;
+  component_mapping.a = VK_COMPONENT_SWIZZLE_IDENTITY;
+  img_view_create_info.components = component_mapping;
+  VkImageSubresourceRange subresource_range = {};
+  subresource_range.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+  subresource_range.baseMipLevel = 0;
+  subresource_range.levelCount = 1;
+  subresource_range.baseArrayLayer = 0;
+  subresource_range.layerCount = 1;
+  img_view_create_info.subresourceRange = subresource_range;
+  VkImageView image_view;
+  std::cout << "Creating image view..." << std::endl;
+  res = vkCreateImageView(device,
+  			  &img_view_create_info,
+  			  CUSTOM_ALLOCATOR ? &alloc_callbacks : nullptr,
+  			  &image_view);
+  if (res == VK_SUCCESS)
+    std::cout << "Image view created successfully!" << std::endl;
+  else if (res == VK_ERROR_OUT_OF_HOST_MEMORY)
+    std::cout << "Failed to create image view: out of host memory" << std::endl;
+  else if (res == VK_ERROR_OUT_OF_DEVICE_MEMORY)
+    std::cout << "Failed to create image view: out of device memory" << std::endl;
+  else if (res == VK_ERROR_VALIDATION_FAILED_EXT)
+    std::cout << "Failed to create image view: validation failed" << std::endl;
+  else
+    std::cout << "Failed to create image view: unknown error" << std::endl;
 
   // Destroy image view
-  // {
-  //   std::lock_guard<std::mutex> lock(image_view_mutex);
-  //   std::cout << "Destroying image view..." << std::endl;
-  //   vkDestroyImageView(device,
-  // 		       image_view,
-  // 		       CUSTOM_ALLOCATOR ? &alloc_callbacks : nullptr);
-  // }
+  {
+    std::lock_guard<std::mutex> lock(image_view_mutex);
+    std::cout << "Destroying image view..." << std::endl;
+    vkDestroyImageView(device,
+  		       image_view,
+  		       CUSTOM_ALLOCATOR ? &alloc_callbacks : nullptr);
+  }
 
   // Free buffer memory
   {
@@ -564,7 +588,6 @@ int main(int argc, const char* argv[]) {
 		 img_memory,
 		 CUSTOM_ALLOCATOR ? &alloc_callbacks : nullptr);
   }
-
 
   // Destroy image
   {
