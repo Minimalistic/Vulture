@@ -30,6 +30,7 @@ std::mutex image_mutex;
 std::mutex image_view_mutex;
 std::mutex img_memory_mutex;
 std::mutex buf_memory_mutex;
+std::mutex command_pool_mutex;
 
 int main(int argc, const char* argv[]) {
   VkApplicationInfo app_info = {};
@@ -560,7 +561,33 @@ int main(int argc, const char* argv[]) {
   vkGetDeviceQueue(device,
 		   queue_family_idx,
 		   queue_family_queue_count-1,
-		   &queue);  
+		   &queue);
+
+  VkCommandPool command_pool;
+  std::cout << "Creating command pool..." << std::endl;
+  VkCommandPoolCreateInfo cmd_pool_create_info = {};
+  cmd_pool_create_info.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+  cmd_pool_create_info.pNext = nullptr;
+  cmd_pool_create_info.flags = VK_COMMAND_POOL_CREATE_TRANSIENT_BIT |
+    VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
+  cmd_pool_create_info.queueFamilyIndex = queue_family_idx;
+  res = vkCreateCommandPool(device,
+			    &cmd_pool_create_info,
+			    CUSTOM_ALLOCATOR ? &alloc_callbacks : nullptr,
+			    &command_pool);
+  if (res == VK_SUCCESS)
+    std::cout << "Command pool created successfully!" << std::endl;
+  else
+    std::cout << "Failed to create command pool..." << std::endl;
+
+  // Destroy command pool
+  {
+    std::lock_guard<std::mutex> lock(command_pool_mutex);
+    std::cout << "Destroying command pool..." << std::endl;
+    vkDestroyCommandPool(device,
+			 command_pool,
+			 CUSTOM_ALLOCATOR ? &alloc_callbacks : nullptr);
+  }
 
   // Destroy buffer view
   {
