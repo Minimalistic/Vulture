@@ -553,6 +553,15 @@ int main(int argc, const char* argv[]) {
   else
     std::cout << "Failed to create image view: unknown error" << std::endl;
 
+  // Right now it seems the only way to check validity is by enabling
+  // the standard validation layer
+  VkQueue queue;
+  std::cout << "Obtaining device queue..." << std::endl;
+  vkGetDeviceQueue(device,
+		   queue_family_idx,
+		   queue_family_queue_count-1,
+		   &queue);  
+
   // Destroy buffer view
   {
     std::lock_guard<std::mutex> lock(buffer_view_mutex);
