@@ -19,6 +19,8 @@
 
 #define CUSTOM_ALLOCATOR                false
 
+#define COMMAND_BUFFER_COUNT            5
+
 #define HOST_COHERENT(X) ((X & VK_MEMORY_PROPERTY_HOST_COHERENT_BIT) != 0)
 #define HOST_VISIBLE(X)  ((X & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) != 0)
 
@@ -31,6 +33,7 @@ std::mutex image_view_mutex;
 std::mutex img_memory_mutex;
 std::mutex buf_memory_mutex;
 std::mutex command_pool_mutex;
+std::vector<std::mutex> command_buffer_mutex(COMMAND_BUFFER_COUNT);
 
 int main(int argc, const char* argv[]) {
   VkApplicationInfo app_info = {};
@@ -145,7 +148,7 @@ int main(int argc, const char* argv[]) {
   if (SHOW_PHYSICAL_DEVICE_LAYERS) {
     uint32_t device_layer_count;
     std::vector<VkLayerProperties> device_layer_props;
-    vkEnumerateDeviceLayerProperties(physical_devices[0], 
+    vkEnumerateDeviceLayerProperties(physical_devices[0],
 				     &device_layer_count, 
 				     nullptr);
     device_layer_props.resize(device_layer_count);
@@ -579,7 +582,47 @@ int main(int argc, const char* argv[]) {
     std::cout << "Command pool created successfully!" << std::endl;
   else
     std::cout << "Failed to create command pool..." << std::endl;
+  
+  // Allocate command buffers  
+  std::vector<VkCommandBuffer> command_buffers;
+  {
+    std::lock_guard<std::mutex> lock(command_pool_mutex);
+    VkCommandBufferAllocateInfo cmd_buf_alloc_info = {};
+    cmd_buf_alloc_info.sType =
+      VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+    cmd_buf_alloc_info.pNext = nullptr;
+    cmd_buf_alloc_info.commandPool = command_pool;
+    cmd_buf_alloc_info.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+    cmd_buf_alloc_info.commandBufferCount = COMMAND_BUFFER_COUNT;
+    command_buffers.resize(COMMAND_BUFFER_COUNT);
+    std::cout << "Allocating command buffers..." << std::endl;
+    res = vkAllocateCommandBuffers(device,
+				   &cmd_buf_alloc_info,
+				   command_buffers.data());
+    if (res == VK_SUCCESS)
+      std::cout << "Command buffers allocated successfully!" << std::endl;
+    else
+      std::cout << "Failed to allocate command buffers..." << std::endl;
 
+  }
+
+  // Free command buffers
+  {
+    std::lock_guard<std::mutex> lock(command_pool_mutex);
+    std::vector<std::unique_lock<std::mutex>> locks;
+    for (auto& mut : command_buffer_mutex)
+      locks.emplace_back(mut, std::defer_lock);
+    for (auto& lck : locks)
+      lck.lock();
+    std::cout << "Freeing command buffers..." << std::endl;
+    vkFreeCommandBuffers(device,
+			 command_pool,
+			 COMMAND_BUFFER_COUNT,
+			 command_buffers.data());
+    for (auto& lck : locks)
+      lck.unlock();
+  }
+  
   // Destroy command pool
   {
     std::lock_guard<std::mutex> lock(command_pool_mutex);
