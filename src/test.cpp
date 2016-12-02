@@ -516,15 +516,6 @@ int main(int argc, const char* argv[]) {
   else
     std::cout << "Failed to create buffer view..." << std::endl;
 
-  // Destroy buffer view
-  {
-    std::lock_guard<std::mutex> lock(buffer_view_mutex);
-    std::cout << "Destroying buffer view..." << std::endl;
-    vkDestroyBufferView(device,
-  			buffer_view,
-  			CUSTOM_ALLOCATOR ? &alloc_callbacks : nullptr);
-  }
-
   VkImageViewCreateInfo img_view_create_info = {};
   img_view_create_info.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
   img_view_create_info.pNext = nullptr;
@@ -562,6 +553,15 @@ int main(int argc, const char* argv[]) {
   else
     std::cout << "Failed to create image view: unknown error" << std::endl;
 
+  // Destroy buffer view
+  {
+    std::lock_guard<std::mutex> lock(buffer_view_mutex);
+    std::cout << "Destroying buffer view..." << std::endl;
+    vkDestroyBufferView(device,
+  			buffer_view,
+  			CUSTOM_ALLOCATOR ? &alloc_callbacks : nullptr);
+  }
+
   // Destroy image view
   {
     std::lock_guard<std::mutex> lock(image_view_mutex);
@@ -588,6 +588,15 @@ int main(int argc, const char* argv[]) {
 		 img_memory,
 		 CUSTOM_ALLOCATOR ? &alloc_callbacks : nullptr);
   }
+  
+  // Destroy buffer
+  {
+    std::lock_guard<std::mutex> lock(buffer_mutex);
+    std::cout << "Destroying buffer..." << std::endl;
+    vkDestroyBuffer(device,
+		    buffer,
+		    CUSTOM_ALLOCATOR ? &alloc_callbacks : nullptr);
+  }
 
   // Destroy image
   {
@@ -596,15 +605,6 @@ int main(int argc, const char* argv[]) {
     vkDestroyImage(device,
 		   image,
 		   CUSTOM_ALLOCATOR ? &alloc_callbacks : nullptr);
-  }
-
-  // Destroy buffer
-  {
-    std::lock_guard<std::mutex> lock(buffer_mutex);
-    std::cout << "Destroying buffer..." << std::endl;
-    vkDestroyBuffer(device,
-		    buffer,
-		    CUSTOM_ALLOCATOR ? &alloc_callbacks : nullptr);
   }
 
   std::cout << "Waiting for device to idle..." << std::endl;
