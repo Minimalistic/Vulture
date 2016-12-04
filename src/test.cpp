@@ -749,6 +749,32 @@ int main(int argc, const char* argv[]) {
     }
   }
 
+  // Add commands
+  {
+    std::lock_guard<std::mutex> lock(command_pool_mutex);
+    std::vector<std::unique_lock<std::mutex>> locks;
+    for (auto& mut : command_buffer_mutex)
+      locks.emplace_back(mut, std::defer_lock);
+    for (unsigned int i = 0; i != COMMAND_BUFFER_COUNT; i++) {
+      std::cout << "Adding vkCmdCopyBuffer from buffer " << 2*i
+		<< " to buffer " << 2*i+1 << " to command buffer " << i
+		<< "..." << std::endl;
+      locks[i].lock();
+      VkBuffer src_buf = buffers[2*i];
+      VkBuffer dst_buf = buffers[2*i+1];
+      std::vector<VkBufferCopy> copies(1);
+      copies[0].srcOffset = 0;
+      copies[0].dstOffset = 0;
+      copies[0].size = 128;
+      vkCmdCopyBuffer(command_buffers[i],
+		      src_buf,
+		      dst_buf,
+		      copies.size(),
+		      copies.data());
+      locks[i].unlock();
+    }
+  }
+
   // End recording
   {
     std::cout << "Ending command buffers (" << COMMAND_BUFFER_COUNT
