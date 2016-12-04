@@ -204,7 +204,8 @@ int main(int argc, const char* argv[]) {
 	      "Type", "Heap", "Size", "Host_Coherent", "Host_Visible");
   for (uint32_t i = 0; i < physical_device_mem_props.memoryTypeCount; i++) {
     VkMemoryType& memType = physical_device_mem_props.memoryTypes[i];
-    VkMemoryHeap& memHeap = physical_device_mem_props.memoryHeaps[memType.heapIndex];
+    VkMemoryHeap& memHeap =
+      physical_device_mem_props.memoryHeaps[memType.heapIndex];
     std::printf("%-10i%-10i%-20lu%-20s%-20s\n",
 		i,
 		memType.heapIndex,
@@ -518,7 +519,17 @@ int main(int argc, const char* argv[]) {
       std::cout << "Failed to map buffer memory..." << std::endl;
   }
 
-  // TODO: Write data to buffer memory
+  char* str = static_cast<char*>(buf_data);
+  str = new char[buf_mem_size];
+  unsigned int k = 0;
+  for (unsigned int i = 0; i != BUFFER_COUNT; i++) {
+    for (unsigned int j = 0; j != buf_mem_requirements[i].size; j++) {
+      int off = rand() % 26;
+      unsigned char c = 'A' + off;
+      str[k++] = c;
+    }
+  }
+  str[buf_mem_size-1] = '\0';
 
   // Unmap buffer memory
   {
@@ -527,6 +538,8 @@ int main(int argc, const char* argv[]) {
     vkUnmapMemory(device,
 		  buf_memory);
   }
+
+  delete[] str;
 
   // Bind buffer memory
   {
@@ -708,7 +721,7 @@ int main(int argc, const char* argv[]) {
     else
       std::cout << "Failed to allocate command buffers..." << std::endl;
   }
-
+ 
   VkCommandBufferBeginInfo cmd_buf_begin_info = {};
   cmd_buf_begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
   cmd_buf_begin_info.pNext = nullptr;
