@@ -520,7 +520,6 @@ int main(int argc, const char* argv[]) {
   }
 
   char* str = static_cast<char*>(buf_data);
-  str = new char[buf_mem_size];
   unsigned int k = 0;
   for (unsigned int i = 0; i != BUFFER_COUNT; i++) {
     for (unsigned int j = 0; j != buf_mem_requirements[i].size; j++) {
@@ -538,8 +537,6 @@ int main(int argc, const char* argv[]) {
     vkUnmapMemory(device,
 		  buf_memory);
   }
-
-  delete[] str;
 
   // Bind buffer memory
   {
