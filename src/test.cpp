@@ -761,7 +761,7 @@ int main(int argc, const char* argv[]) {
       vkCmdCopyBuffer(command_buffers[i],
 		      src_buf,
 		      dst_buf,
-		      copies.size(),
+		      static_cast<uint32_t>(copies.size()),
 		      copies.data());
       locks[i].unlock();
     }
