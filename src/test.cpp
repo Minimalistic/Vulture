@@ -1,6 +1,7 @@
 #include <iostream>
 #include <vector>
 #include <mutex>
+#include <cstring>
 
 #include <vulkan/vulkan.h>
 
@@ -44,6 +45,28 @@ bool supports_mem_reqs(unsigned int memory_type_idx,
     if (mem_requirement.memoryTypeBits & mem_type_bit == 0)
       return false;
   return true;
+}
+
+void print_mem(VkDevice device,
+	       VkDeviceMemory memory,
+	       std::mutex& mem_mutex,
+	       VkDeviceSize offset,
+	       VkDeviceSize size) {
+  std::lock_guard<std::mutex> lock(mem_mutex);
+  void* data;
+  VkResult res = vkMapMemory(device,
+			     memory,
+			     offset,
+			     size+1,
+			     0,
+			     &data);
+  if (res != VK_SUCCESS)
+    std::cout << "Failed to print memory (Offset=" << offset
+	      << ",Size=" << size << ")..." << std::endl;
+  char* str = static_cast<char*>(data);
+  str[size] = '\0';
+  std::cout << str << std::endl;
+  vkUnmapMemory(device, memory);
 }
 
 int main(int argc, const char* argv[]) {
@@ -502,7 +525,7 @@ int main(int argc, const char* argv[]) {
 		  img_memory);
   }
   
-  void* buf_data = nullptr;
+  void* buf_data;
   // Map buffer memory
   {
     std::cout << "Mapping buffer memory..." << std::endl;
@@ -519,7 +542,7 @@ int main(int argc, const char* argv[]) {
       std::cout << "Failed to map buffer memory..." << std::endl;
   }
 
-  char* str = static_cast<char*>(buf_data);
+  char* str = new char[buf_mem_size];
   unsigned int k = 0;
   for (unsigned int i = 0; i != BUFFER_COUNT; i++) {
     for (unsigned int j = 0; j != buf_mem_requirements[i].size; j++) {
@@ -529,6 +552,8 @@ int main(int argc, const char* argv[]) {
     }
   }
   str[buf_mem_size-1] = '\0';
+  memcpy(buf_data, str, buf_mem_size);
+  delete(str);
 
   // Unmap buffer memory
   {
@@ -718,7 +743,7 @@ int main(int argc, const char* argv[]) {
     else
       std::cout << "Failed to allocate command buffers..." << std::endl;
   }
- 
+
   VkCommandBufferBeginInfo cmd_buf_begin_info = {};
   cmd_buf_begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
   cmd_buf_begin_info.pNext = nullptr;
