@@ -6,12 +6,19 @@ project (VulkanTest)
 set (VulkanTest_VERSION_MAJOR 1)
 set (VulkanTest_VERSION_MINOR 0)
 
-file(GLOB SOURCE_DIR "src/*.cpp")
-include_directories(include)
-add_executable(VulkanTest ${SOURCE_DIR})
-
 # Enable C++11 support
-target_compile_features(VulkanTest PRIVATE cxx_range_for)
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")
+
+set(SOURCE_DIR src)
+
+include_directories(include)
+
+add_library(Utility ${SOURCE_DIR}/util.cpp)
+add_library(Allocator ${SOURCE_DIR}/allocator.cpp)
+
+add_executable(VulkanTest ${SOURCE_DIR}/test.cpp)
+target_link_libraries(VulkanTest Utility)
+target_link_libraries(VulkanTest Allocator)
 
 # Include Vulkan headers
 include_directories("$ENV{VULKAN_SDK}/include")

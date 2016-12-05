@@ -1,5 +1,5 @@
 #ifndef ALLOCATOR_HPP_
-#define ALLOCATION_HPP_
+#define ALLOCATOR_HPP_
 
 #include <vulkan/vulkan.h>
 
