@@ -25,6 +25,11 @@
 #define IMAGE_COUNT                     21
 #define COMMAND_BUFFER_COUNT            5
 
+#define MAX_QUEUES                      64
+
+#define READ_OFFSET                     0
+#define READ_LENGTH                     64
+
 #define HOST_COHERENT(X) ((X & VK_MEMORY_PROPERTY_HOST_COHERENT_BIT) != 0)
 #define HOST_VISIBLE(X)  ((X & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) != 0)
 
@@ -38,6 +43,7 @@ std::mutex img_memory_mutex;
 std::mutex buf_memory_mutex;
 std::mutex command_pool_mutex;
 std::vector<std::mutex> command_buffer_mutex(COMMAND_BUFFER_COUNT);
+std::vector<std::mutex> queue_mutex(MAX_QUEUES);
 
 int main(int argc, const char* argv[]) {
   VkApplicationInfo app_info = {};
@@ -787,6 +793,70 @@ int main(int argc, const char* argv[]) {
       locks[i].unlock();
     }
   }
+
+  std::cout << "Before submit:" << std::endl;
+  std::cout << "Buffer 0 (offset=" << READ_OFFSET << ", len="
+	    << READ_LENGTH << "): ";
+  print_mem(device, buf_memory, buf_memory_mutex, READ_OFFSET, READ_LENGTH);
+  std::cout << "Buffer 1 (offset=" << READ_OFFSET << ", len="
+	    << READ_LENGTH << "): ";
+  print_mem(device, buf_memory, buf_memory_mutex,
+	    READ_OFFSET + buf_mem_requirements[0].size,
+	    READ_LENGTH);
+
+  std::vector<VkSubmitInfo> submit_infos(1);
+  submit_infos[0].sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+  submit_infos[0].pNext = nullptr;
+  submit_infos[0].waitSemaphoreCount = 0;
+  submit_infos[0].pWaitSemaphores = nullptr;
+  submit_infos[0].pWaitDstStageMask = nullptr;
+  submit_infos[0].commandBufferCount =
+    static_cast<uint32_t>(command_buffers.size());
+  submit_infos[0].pCommandBuffers = command_buffers.data();
+  submit_infos[0].signalSemaphoreCount = 0;
+  submit_infos[0].pSignalSemaphores = nullptr;
+  uint32_t submit_queue_idx = 0;
+  // Submit all command buffers to queue
+  {
+    std::cout << "Submitting command buffers to queue "
+	      << submit_queue_idx << "..." << std::endl;
+    std::lock_guard<std::mutex> lock(queue_mutex[submit_queue_idx]);
+    res = vkQueueSubmit(queues[submit_queue_idx],
+			static_cast<uint32_t>(submit_infos.size()),
+			submit_infos.data(),
+			VK_NULL_HANDLE);
+    if (res == VK_SUCCESS)
+      std::cout << "Command buffers submitted to queue " << submit_queue_idx
+		<< " successfully!" << std::endl;
+    else
+      std::cout << "Failed to submit command buffers to queue "
+		<< submit_queue_idx << "..." << std::endl;
+  }
+
+  // Wait on queue to finish executing command buffers. Not recommended:
+  // use fence instead.
+  {
+    std::cout << "Waiting for queue " << submit_queue_idx
+	      << " to idle..." << std::endl;
+    res = vkQueueWaitIdle(queues[submit_queue_idx]);
+    if (res == VK_SUCCESS)
+      std::cout << "Queue " << submit_queue_idx << " idled successfully!"
+		<< std::endl;
+    else
+      std::cout << "Failed to wait for queue " << submit_queue_idx
+		<< "...";
+  }
+
+  std::cout << "After submit:" << std::endl;
+  std::cout << "Buffer 0 (offset=" << READ_OFFSET << ", len="
+	    << READ_LENGTH << "): ";
+  print_mem(device, buf_memory, buf_memory_mutex, READ_OFFSET, READ_LENGTH);
+  std::cout << "Buffer 1 (offset=" << READ_OFFSET << ", len="
+	    << READ_LENGTH << "): ";
+  print_mem(device, buf_memory, buf_memory_mutex,
+	    READ_OFFSET + buf_mem_requirements[0].size,
+	    READ_LENGTH);
+
 
   // Free command buffers
   {
