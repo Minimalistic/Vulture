@@ -6,7 +6,7 @@ bool supports_mem_reqs(unsigned int memory_type_idx,
 		       const std::vector<VkMemoryRequirements>& mem_reqs) {
   unsigned long mem_type_bit = 1 << memory_type_idx;
   for (auto& mem_requirement : mem_reqs)
-    if (mem_requirement.memoryTypeBits & mem_type_bit == 0)
+    if ((mem_requirement.memoryTypeBits & mem_type_bit) == 0)
       return false;
   return true;
 }
