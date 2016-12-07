@@ -529,7 +529,7 @@ int main(int argc, const char* argv[]) {
   }
   str[buf_mem_size-1] = '\0';
   memcpy(buf_data, str, buf_mem_size);
-  delete(str);
+  delete[](str);
 
   // Unmap buffer memory
   {
