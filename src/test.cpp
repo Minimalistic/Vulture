@@ -58,8 +58,10 @@ std::vector<VkPhysicalDevice> physical_devices;
 VkPhysicalDeviceMemoryProperties physical_device_mem_props;
 std::vector<VkQueueFamilyProperties> queue_family_properties;
 VkDevice device;
+std::vector<VkBuffer> buffers;
 
-void create_instance() {
+void create_instance()
+{
   VkApplicationInfo app_info = {};
   app_info.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
   app_info.pNext = nullptr;
@@ -100,7 +102,8 @@ void create_instance() {
     std::cout << "Instance creation failed..." << std::endl;
 }
 
-void enumerate_physical_devices() {
+void enumerate_physical_devices()
+{
   uint32_t physical_device_count;
   
   res = vkEnumeratePhysicalDevices(inst, &physical_device_count, nullptr);
@@ -128,7 +131,8 @@ void enumerate_physical_devices() {
     std::cout << "Could not get number of physical devices..." << std::endl;
 }
 
-void get_physical_device_memory_properties() {
+void get_physical_device_memory_properties()
+{
   std::cout << "Getting memory properties for physical device " <<
     phys_device_idx << "..." << std::endl;
   vkGetPhysicalDeviceMemoryProperties(physical_devices[phys_device_idx],
@@ -209,7 +213,39 @@ void create_device()
     std::cout << "Failed to create device..." << std::endl;
 }
 
-int main(int argc, const char* argv[]) {
+void create_buffers()
+{
+  std::vector<VkBufferCreateInfo> buf_create_infos;
+  buf_create_infos.resize(BUFFER_COUNT);
+  for (unsigned int i = 0; i != BUFFER_COUNT; i++) {
+    buf_create_infos[i].sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+    buf_create_infos[i].pNext = nullptr;
+    buf_create_infos[i].flags = 0;
+    buf_create_infos[i].size = 1024*1024;
+    buf_create_infos[i].usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT
+      | VK_BUFFER_USAGE_TRANSFER_DST_BIT
+      | VK_BUFFER_USAGE_UNIFORM_TEXEL_BUFFER_BIT;
+    buf_create_infos[i].sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+    buf_create_infos[i].queueFamilyIndexCount = 0;
+    buf_create_infos[i].pQueueFamilyIndices = nullptr;
+  }
+  
+  buffers.resize(BUFFER_COUNT);
+  std::cout << "Creating buffers (" << BUFFER_COUNT << ")..." << std::endl;
+  for (int i = 0; i != BUFFER_COUNT; i++) {
+    res = vkCreateBuffer(device,
+			 &buf_create_infos[i],
+			 CUSTOM_ALLOCATOR ? &alloc_callbacks : nullptr,
+			 &buffers[i]);
+    if (res == VK_SUCCESS)
+      std::cout << "Buffer " << i << " created successfully!" << std::endl;
+    else
+      std::cout << "Failed to create buffer " << i << "..." << std::endl;
+  }
+}
+
+int main(int argc, const char* argv[])
+{
   if (SHOW_INSTANCE_LAYERS) {
     uint32_t inst_layer_count;
     std::vector<VkLayerProperties> inst_layer_props;
@@ -302,35 +338,8 @@ int main(int argc, const char* argv[]) {
     queue_family_properties[queue_family_idx].queueCount;
 
   create_device();
-  
-  std::vector<VkBufferCreateInfo> buf_create_infos;
-  buf_create_infos.resize(BUFFER_COUNT);
-  for (unsigned int i = 0; i != BUFFER_COUNT; i++) {
-    buf_create_infos[i].sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-    buf_create_infos[i].pNext = nullptr;
-    buf_create_infos[i].flags = 0;
-    buf_create_infos[i].size = 1024*1024;
-    buf_create_infos[i].usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT
-      | VK_BUFFER_USAGE_TRANSFER_DST_BIT
-      | VK_BUFFER_USAGE_UNIFORM_TEXEL_BUFFER_BIT;
-    buf_create_infos[i].sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-    buf_create_infos[i].queueFamilyIndexCount = 0;
-    buf_create_infos[i].pQueueFamilyIndices = nullptr;
-  }
-  
-  std::vector<VkBuffer> buffers;
-  buffers.resize(BUFFER_COUNT);
-  std::cout << "Creating buffers (" << BUFFER_COUNT << ")..." << std::endl;
-  for (int i = 0; i != BUFFER_COUNT; i++) {
-    res = vkCreateBuffer(device,
-			 &buf_create_infos[i],
-			 CUSTOM_ALLOCATOR ? &alloc_callbacks : nullptr,
-			 &buffers[i]);
-    if (res == VK_SUCCESS)
-      std::cout << "Buffer " << i << " created successfully!" << std::endl;
-    else
-      std::cout << "Failed to create buffer " << i << "..." << std::endl;
-  }
+
+  create_buffers();
 
   std::vector<VkImageCreateInfo> img_create_infos;
   img_create_infos.resize(IMAGE_COUNT);
