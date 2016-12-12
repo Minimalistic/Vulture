@@ -8,8 +8,8 @@
 #include "allocator.hpp"
 #include "util.hpp"
 
-#define APP_SHORT_NAME     "VulkanTest"
-#define ENGINE_SHORT_NAME  "DummyEngine"
+#define APP_SHORT_NAME     "VultureTest"
+#define ENGINE_SHORT_NAME  "Vulture"
 
 #define SHOW_INSTANCE_LAYERS            false
 #define SHOW_PHYSICAL_DEVICE_LAYERS     false
@@ -91,8 +91,9 @@ void create_instance()
     inst_info.ppEnabledLayerNames = nullptr;
   }
 
-  std::cout << "Creating " << APP_SHORT_NAME 
-	    << " application instance..." << std::endl;
+  std::cout << "Creating " << ENGINE_SHORT_NAME 
+	    << " application instance (" APP_SHORT_NAME << ")..."
+	    << std::endl;
   res = vkCreateInstance(&inst_info,
 			 CUSTOM_ALLOCATOR ? &alloc_callbacks : nullptr,
 			 &inst);
