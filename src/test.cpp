@@ -47,9 +47,12 @@ std::vector<std::mutex> queue_mutex(MAX_QUEUES);
 
 allocator my_alloc;
 
+uint32_t physical_device_idx = 0;
+
 VkResult res;
 VkInstance inst;
 VkAllocationCallbacks alloc_callbacks = my_alloc;
+std::vector<VkPhysicalDevice> physical_devices;
 
 void create_instance() {
   VkApplicationInfo app_info = {};
@@ -92,6 +95,34 @@ void create_instance() {
     std::cout << "Instance creation failed..." << std::endl;
 }
 
+void enumerate_physical_devices() {
+  uint32_t physical_device_count;
+  
+  res = vkEnumeratePhysicalDevices(inst, &physical_device_count, nullptr);
+  if (res == VK_SUCCESS) {
+    std::cout << "Found " << physical_device_count << " physical device" 
+	      << (physical_device_count == 1 ? "." : "s.") << std::endl;
+    physical_devices.resize(physical_device_count);
+    res = vkEnumeratePhysicalDevices(inst,
+				     &physical_device_count, 
+				     physical_devices.data());
+    if (res == VK_SUCCESS) {
+      std::cout << "Loaded " << physical_devices.size()
+		<< " physical device"
+		<< (physical_devices.size() == 1 ? "." : "s.") << std::endl;
+      VkPhysicalDeviceProperties device_props;
+      using device_index = std::vector<VkPhysicalDevice>::size_type;
+      for (device_index i = 0; i < physical_devices.size(); i++) {
+	vkGetPhysicalDeviceProperties(physical_devices[i], &device_props);
+	std::cout << "Physical Device " << i << ": " 
+		  << device_props.deviceName << std::endl;
+      }
+    } else
+      std::cout << "Failed to load physical devices..." << std::endl;
+  } else
+    std::cout << "Could not get number of physical devices..." << std::endl;
+}
+
 int main(int argc, const char* argv[]) {
   if (SHOW_INSTANCE_LAYERS) {
     uint32_t inst_layer_count;
@@ -132,33 +163,8 @@ int main(int argc, const char* argv[]) {
     std::cout << "Using custom allocator..." << std::endl;
 
   create_instance();
-
-  uint32_t physical_device_count;
-  std::vector<VkPhysicalDevice> physical_devices;
   
-  res = vkEnumeratePhysicalDevices(inst, &physical_device_count, nullptr);
-  if (res == VK_SUCCESS) {
-    std::cout << "Found " << physical_device_count << " physical device" 
-	      << (physical_device_count == 1 ? "." : "s.") << std::endl;
-    physical_devices.resize(physical_device_count);
-    res = vkEnumeratePhysicalDevices(inst,
-				     &physical_device_count, 
-				     physical_devices.data());
-    if (res == VK_SUCCESS) {
-      std::cout << "Loaded " << physical_devices.size()
-		<< " physical device"
-		<< (physical_devices.size() == 1 ? "." : "s.") << std::endl;
-      VkPhysicalDeviceProperties device_props;
-      using device_index = std::vector<VkPhysicalDevice>::size_type;
-      for (device_index i = 0; i < physical_devices.size(); i++) {
-	vkGetPhysicalDeviceProperties(physical_devices[i], &device_props);
-	std::cout << "Device " << i << ": " 
-		  << device_props.deviceName << std::endl;
-      }
-    } else
-      std::cout << "Failed to load physical devices..." << std::endl;
-  } else
-    std::cout << "Could not get number of physical devices..." << std::endl;
+  enumerate_physical_devices();
 
   if (SHOW_PHYSICAL_DEVICE_LAYERS) {
     uint32_t device_layer_count;
