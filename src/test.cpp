@@ -59,6 +59,7 @@ VkPhysicalDeviceMemoryProperties physical_device_mem_props;
 std::vector<VkQueueFamilyProperties> queue_family_properties;
 VkDevice device;
 std::vector<VkBuffer> buffers;
+std::vector<VkImage> images;
 
 void create_instance()
 {
@@ -245,6 +246,58 @@ void create_buffers()
   }
 }
 
+void create_images()
+{
+  std::vector<VkImageCreateInfo> img_create_infos;
+  img_create_infos.resize(IMAGE_COUNT);
+  for (unsigned int i = 0; i != IMAGE_COUNT; i++) {
+    img_create_infos[i].sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+    img_create_infos[i].pNext = nullptr;
+    img_create_infos[i].flags = 0;
+    img_create_infos[i].imageType = VK_IMAGE_TYPE_2D;
+    img_create_infos[i].format = VK_FORMAT_R8G8B8A8_UNORM;
+    VkExtent3D dimensions = {};
+    dimensions.width = 1024;
+    dimensions.height = 1024;
+    dimensions.depth = 1;
+    img_create_infos[i].extent = dimensions;
+    img_create_infos[i].mipLevels = 1;
+    img_create_infos[i].arrayLayers = 1;
+    img_create_infos[i].samples = VK_SAMPLE_COUNT_1_BIT;
+    img_create_infos[i].tiling = VK_IMAGE_TILING_LINEAR;  
+    img_create_infos[i].usage = VK_IMAGE_USAGE_SAMPLED_BIT |
+      VK_IMAGE_USAGE_TRANSFER_SRC_BIT |
+      VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+    img_create_infos[i].sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+    img_create_infos[i].queueFamilyIndexCount = 0;
+    img_create_infos[i].pQueueFamilyIndices = nullptr;
+    img_create_infos[i].initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+  }
+
+  images.resize(IMAGE_COUNT);
+  std::cout << "Creating images (" << IMAGE_COUNT << ")..." << std::endl;
+  for (unsigned int i = 0; i != IMAGE_COUNT; i++) {
+    res = vkCreateImage(device,
+			&img_create_infos[i],
+			CUSTOM_ALLOCATOR ? &alloc_callbacks : nullptr,
+			&images[i]);
+    if (res == VK_SUCCESS)
+      std::cout << "Image " << i << " created successfully!" << std::endl;
+    else if (res == VK_ERROR_OUT_OF_HOST_MEMORY)
+      std::cout << "Failed to create image " << i
+		<< ": out of host memory" << std::endl;
+    else if (res == VK_ERROR_OUT_OF_DEVICE_MEMORY)
+      std::cout << "Failed to create image " << i
+		<< ": out of device memory" << std::endl;
+    else if (res == VK_ERROR_VALIDATION_FAILED_EXT)
+      std::cout << "Failed to create image " << i << ": validation failed"
+		<< std::endl;
+    else
+      std::cout << "Failed to create image " << i << ": unknown error"
+		<< std::endl;
+  }
+}
+
 int main(int argc, const char* argv[])
 {
   if (SHOW_INSTANCE_LAYERS) {
@@ -342,55 +395,7 @@ int main(int argc, const char* argv[])
 
   create_buffers();
 
-  std::vector<VkImageCreateInfo> img_create_infos;
-  img_create_infos.resize(IMAGE_COUNT);
-  for (unsigned int i = 0; i != IMAGE_COUNT; i++) {
-    img_create_infos[i].sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
-    img_create_infos[i].pNext = nullptr;
-    img_create_infos[i].flags = 0;
-    img_create_infos[i].imageType = VK_IMAGE_TYPE_2D;
-    img_create_infos[i].format = VK_FORMAT_R8G8B8A8_UNORM;
-    VkExtent3D dimensions = {};
-    dimensions.width = 1024;
-    dimensions.height = 1024;
-    dimensions.depth = 1;
-    img_create_infos[i].extent = dimensions;
-    img_create_infos[i].mipLevels = 1;
-    img_create_infos[i].arrayLayers = 1;
-    img_create_infos[i].samples = VK_SAMPLE_COUNT_1_BIT;
-    img_create_infos[i].tiling = VK_IMAGE_TILING_LINEAR;  
-    img_create_infos[i].usage = VK_IMAGE_USAGE_SAMPLED_BIT |
-      VK_IMAGE_USAGE_TRANSFER_SRC_BIT |
-      VK_IMAGE_USAGE_TRANSFER_DST_BIT;
-    img_create_infos[i].sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-    img_create_infos[i].queueFamilyIndexCount = 0;
-    img_create_infos[i].pQueueFamilyIndices = nullptr;
-    img_create_infos[i].initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-  }
-
-  std::vector<VkImage> images;
-  images.resize(IMAGE_COUNT);
-  std::cout << "Creating images (" << IMAGE_COUNT << ")..." << std::endl;
-  for (unsigned int i = 0; i != IMAGE_COUNT; i++) {
-    res = vkCreateImage(device,
-			&img_create_infos[i],
-			CUSTOM_ALLOCATOR ? &alloc_callbacks : nullptr,
-			&images[i]);
-    if (res == VK_SUCCESS)
-      std::cout << "Image " << i << " created successfully!" << std::endl;
-    else if (res == VK_ERROR_OUT_OF_HOST_MEMORY)
-      std::cout << "Failed to create image " << i
-		<< ": out of host memory" << std::endl;
-    else if (res == VK_ERROR_OUT_OF_DEVICE_MEMORY)
-      std::cout << "Failed to create image " << i << ": out of device memory"
-		<< std::endl;
-    else if (res == VK_ERROR_VALIDATION_FAILED_EXT)
-      std::cout << "Failed to create image " << i << ": validation failed"
-		<< std::endl;
-    else
-      std::cout << "Failed to create image " << i << ": unknown error"
-		<< std::endl;
-  }
+  create_images();
 
   VkImageSubresource img_subresource = {};
   img_subresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
