@@ -53,6 +53,7 @@ VkResult res;
 VkInstance inst;
 VkAllocationCallbacks alloc_callbacks = my_alloc;
 std::vector<VkPhysicalDevice> physical_devices;
+VkPhysicalDeviceMemoryProperties physical_device_mem_props;
 
 void create_instance() {
   VkApplicationInfo app_info = {};
@@ -121,6 +122,26 @@ void enumerate_physical_devices() {
       std::cout << "Failed to load physical devices..." << std::endl;
   } else
     std::cout << "Could not get number of physical devices..." << std::endl;
+}
+
+void get_physical_device_memory_properties() {
+  std::cout << "Getting memory properties for physical device " <<
+    phys_device_idx << "..." << std::endl;
+  vkGetPhysicalDeviceMemoryProperties(physical_devices[phys_device_idx],
+				      &physical_device_mem_props);
+  std::printf("%-10s%-10s%-20s%-20s%-20s\n",
+	      "Type", "Heap", "Size", "Host_Coherent", "Host_Visible");
+  for (uint32_t i = 0; i < physical_device_mem_props.memoryTypeCount; i++) {
+    VkMemoryType& memType = physical_device_mem_props.memoryTypes[i];
+    VkMemoryHeap& memHeap =
+      physical_device_mem_props.memoryHeaps[memType.heapIndex];
+    std::printf("%-10i%-10i%-20lu%-20s%-20s\n",
+		i,
+		memType.heapIndex,
+		(unsigned long) memHeap.size,
+		HOST_COHERENT(memType.propertyFlags) ? "Y" : "N",
+		HOST_VISIBLE(memType.propertyFlags) ? "Y" : "N");
+  }
 }
 
 int main(int argc, const char* argv[]) {
@@ -208,23 +229,7 @@ int main(int argc, const char* argv[]) {
       std::cout << "No device extensions available..." << std::endl;
   }
 
-  std::cout << "Getting physical device memory properties..." << std::endl;
-  VkPhysicalDeviceMemoryProperties physical_device_mem_props;
-  vkGetPhysicalDeviceMemoryProperties(physical_devices[phys_device_idx],
-				      &physical_device_mem_props);
-  std::printf("%-10s%-10s%-20s%-20s%-20s\n",
-	      "Type", "Heap", "Size", "Host_Coherent", "Host_Visible");
-  for (uint32_t i = 0; i < physical_device_mem_props.memoryTypeCount; i++) {
-    VkMemoryType& memType = physical_device_mem_props.memoryTypes[i];
-    VkMemoryHeap& memHeap =
-      physical_device_mem_props.memoryHeaps[memType.heapIndex];
-    std::printf("%-10i%-10i%-20lu%-20s%-20s\n",
-		i,
-		memType.heapIndex,
-		(unsigned long) memHeap.size,
-		HOST_COHERENT(memType.propertyFlags) ? "Y" : "N",
-		HOST_VISIBLE(memType.propertyFlags) ? "Y" : "N");
-  }
+  get_physical_device_memory_properties();
 
   uint32_t queue_family_property_count;
   std::vector<VkQueueFamilyProperties> queue_family_properties;
