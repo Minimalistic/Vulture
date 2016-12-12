@@ -54,6 +54,7 @@ VkInstance inst;
 VkAllocationCallbacks alloc_callbacks = my_alloc;
 std::vector<VkPhysicalDevice> physical_devices;
 VkPhysicalDeviceMemoryProperties physical_device_mem_props;
+std::vector<VkQueueFamilyProperties> queue_family_properties;
 
 void create_instance() {
   VkApplicationInfo app_info = {};
@@ -144,6 +145,26 @@ void get_physical_device_memory_properties() {
   }
 }
 
+void get_queue_family_properties() {
+  uint32_t queue_family_property_count;
+  vkGetPhysicalDeviceQueueFamilyProperties(physical_devices[phys_device_idx], 
+					   &queue_family_property_count, 
+					   nullptr);
+  std::cout << "Found " << queue_family_property_count << " queue " 
+	    << (queue_family_property_count == 1 ? "family " : "families ") 
+	    << "for this physical device." << std::endl;
+  queue_family_properties.resize(queue_family_property_count);
+  vkGetPhysicalDeviceQueueFamilyProperties(physical_devices[phys_device_idx],
+					   &queue_family_property_count,
+					   queue_family_properties.data());
+
+  using queue_fam_idx = std::vector<VkQueueFamilyProperties>::size_type;
+  std::cout << "Family\tQueues" << std::endl;
+  for (queue_fam_idx i = 0; i < queue_family_properties.size(); i++)
+    std::cout << i << "\t" << queue_family_properties[i].queueCount 
+	      << std::endl;
+}
+
 int main(int argc, const char* argv[]) {
   if (SHOW_INSTANCE_LAYERS) {
     uint32_t inst_layer_count;
@@ -231,24 +252,7 @@ int main(int argc, const char* argv[]) {
 
   get_physical_device_memory_properties();
 
-  uint32_t queue_family_property_count;
-  std::vector<VkQueueFamilyProperties> queue_family_properties;
-  vkGetPhysicalDeviceQueueFamilyProperties(physical_devices[phys_device_idx], 
-					   &queue_family_property_count, 
-					   nullptr);
-  std::cout << "Found " << queue_family_property_count << " queue " 
-	    << (queue_family_property_count == 1 ? "family " : "families ") 
-	    << "for this physical device." << std::endl;
-  queue_family_properties.resize(queue_family_property_count);
-  vkGetPhysicalDeviceQueueFamilyProperties(physical_devices[phys_device_idx],
-					   &queue_family_property_count,
-					   queue_family_properties.data());
-
-  using queue_fam_idx = std::vector<VkQueueFamilyProperties>::size_type;
-  std::cout << "Family\tQueues" << std::endl;
-  for (queue_fam_idx i = 0; i < queue_family_properties.size(); i++)
-    std::cout << i << "\t" << queue_family_properties[i].queueCount 
-	      << std::endl;
+  get_queue_family_properties();
   
   uint32_t queue_family_idx = 0;
   uint32_t queue_family_queue_count
