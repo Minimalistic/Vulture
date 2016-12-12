@@ -45,7 +45,13 @@ std::mutex command_pool_mutex;
 std::vector<std::mutex> command_buffer_mutex(COMMAND_BUFFER_COUNT);
 std::vector<std::mutex> queue_mutex(MAX_QUEUES);
 
-int main(int argc, const char* argv[]) {
+allocator my_alloc;
+
+VkResult res;
+VkInstance inst;
+VkAllocationCallbacks alloc_callbacks = my_alloc;
+
+void create_instance() {
   VkApplicationInfo app_info = {};
   app_info.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
   app_info.pNext = nullptr;
@@ -55,6 +61,38 @@ int main(int argc, const char* argv[]) {
   app_info.engineVersion = VK_MAKE_VERSION(1, 0, 0);
   app_info.apiVersion = VK_API_VERSION_1_0;
 
+  VkInstanceCreateInfo inst_info = {};
+  inst_info.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
+  inst_info.pNext = nullptr;
+  inst_info.flags = 0;
+  inst_info.pApplicationInfo = &app_info;
+  inst_info.enabledExtensionCount = 0;
+  inst_info.ppEnabledExtensionNames = nullptr;
+  if (ENABLE_STANDARD_VALIDATION) {
+    std::cout << "Enabling LunarG standard validation instance layer..." 
+	      << std::endl;
+    const char* enabled_layer_names[] = {
+      "VK_LAYER_LUNARG_standard_validation"
+    };
+    inst_info.enabledLayerCount = 1;
+    inst_info.ppEnabledLayerNames = enabled_layer_names;
+  } else {
+    inst_info.enabledLayerCount = 0;
+    inst_info.ppEnabledLayerNames = nullptr;
+  }
+
+  std::cout << "Creating " << APP_SHORT_NAME 
+	    << " application instance..." << std::endl;
+  res = vkCreateInstance(&inst_info,
+			 CUSTOM_ALLOCATOR ? &alloc_callbacks : nullptr,
+			 &inst);
+  if (res == VK_SUCCESS)
+    std::cout << "Instance created successfully!" << std::endl;
+  else
+    std::cout << "Instance creation failed..." << std::endl;
+}
+
+int main(int argc, const char* argv[]) {
   if (SHOW_INSTANCE_LAYERS) {
     uint32_t inst_layer_count;
     std::vector<VkLayerProperties> inst_layer_props;
@@ -89,45 +127,12 @@ int main(int argc, const char* argv[]) {
     } else
       std::cout << "No instance extensions available..." << std::endl;
   }
-
-  VkInstanceCreateInfo inst_info = {};
-  inst_info.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
-  inst_info.pNext = nullptr;
-  inst_info.flags = 0;
-  inst_info.pApplicationInfo = &app_info;
-  inst_info.enabledExtensionCount = 0;
-  inst_info.ppEnabledExtensionNames = nullptr;
-  if (ENABLE_STANDARD_VALIDATION) {
-    std::cout << "Enabling LunarG standard validation instance layer..." 
-	      << std::endl;
-    const char* enabled_layer_names[] = {
-      "VK_LAYER_LUNARG_standard_validation"
-    };
-    inst_info.enabledLayerCount = 1;
-    inst_info.ppEnabledLayerNames = enabled_layer_names;
-  } else {
-    inst_info.enabledLayerCount = 0;
-    inst_info.ppEnabledLayerNames = nullptr;
-  }
-
-  VkInstance inst;
-  VkResult res;
-
-  allocator my_alloc;
-  VkAllocationCallbacks alloc_callbacks = my_alloc;
   
   if (CUSTOM_ALLOCATOR)
     std::cout << "Using custom allocator..." << std::endl;
-  std::cout << "Creating " << APP_SHORT_NAME 
-	    << " application instance..." << std::endl;
-  res = vkCreateInstance(&inst_info,
-			 CUSTOM_ALLOCATOR ? &alloc_callbacks : nullptr,
-			 &inst);
-  if (res == VK_SUCCESS)
-    std::cout << "Instance created successfully!" << std::endl;
-  else
-    std::cout << "Instance creation failed..." << std::endl;
-  
+
+  create_instance();
+
   uint32_t physical_device_count;
   std::vector<VkPhysicalDevice> physical_devices;
   
