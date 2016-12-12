@@ -47,7 +47,7 @@ std::vector<std::mutex> queue_mutex(MAX_QUEUES);
 
 allocator my_alloc;
 
-uint32_t physical_device_idx = 0;
+uint32_t phys_device_idx = 0;
 
 VkResult res;
 VkInstance inst;
@@ -169,31 +169,33 @@ int main(int argc, const char* argv[]) {
   if (SHOW_PHYSICAL_DEVICE_LAYERS) {
     uint32_t device_layer_count;
     std::vector<VkLayerProperties> device_layer_props;
-    vkEnumerateDeviceLayerProperties(physical_devices[0],
+    vkEnumerateDeviceLayerProperties(physical_devices[phys_device_idx],
 				     &device_layer_count, 
 				     nullptr);
     device_layer_props.resize(device_layer_count);
-    vkEnumerateDeviceLayerProperties(physical_devices[0],
+    vkEnumerateDeviceLayerProperties(physical_devices[phys_device_idx],
 				     &device_layer_count, 
 				     device_layer_props.data());
     if (device_layer_count != 0) {
-      std::cout << "\nDevice Layers:" << std::endl;
+      std::cout << "\nPhysical Device " << phys_device_idx
+		<< " Layers:" << std::endl;
       for (auto& layer : device_layer_props)
 	std::cout << layer.layerName << std::endl;
       std::cout << std::endl;
     } else
-      std::cout << "No device layers available..." << std::endl;
+      std::cout << "No device layers available for physical device "
+		<< phys_device_idx << "..." << std::endl;
   }
 
   if (SHOW_PHYSICAL_DEVICE_EXTENSIONS) {
     uint32_t device_ext_count;
     std::vector<VkExtensionProperties> device_ext_props;
-    vkEnumerateDeviceExtensionProperties(physical_devices[0],
+    vkEnumerateDeviceExtensionProperties(physical_devices[phys_device_idx],
 					 nullptr,
 					 &device_ext_count,
 					 nullptr);
     device_ext_props.resize(device_ext_count);
-    vkEnumerateDeviceExtensionProperties(physical_devices[0],
+    vkEnumerateDeviceExtensionProperties(physical_devices[phys_device_idx],
 					 nullptr,
 					 &device_ext_count,
 					 device_ext_props.data());
@@ -208,7 +210,7 @@ int main(int argc, const char* argv[]) {
 
   std::cout << "Getting physical device memory properties..." << std::endl;
   VkPhysicalDeviceMemoryProperties physical_device_mem_props;
-  vkGetPhysicalDeviceMemoryProperties(physical_devices[0],
+  vkGetPhysicalDeviceMemoryProperties(physical_devices[phys_device_idx],
 				      &physical_device_mem_props);
   std::printf("%-10s%-10s%-20s%-20s%-20s\n",
 	      "Type", "Heap", "Size", "Host_Coherent", "Host_Visible");
@@ -226,14 +228,14 @@ int main(int argc, const char* argv[]) {
 
   uint32_t queue_family_property_count;
   std::vector<VkQueueFamilyProperties> queue_family_properties;
-  vkGetPhysicalDeviceQueueFamilyProperties(physical_devices[0], 
+  vkGetPhysicalDeviceQueueFamilyProperties(physical_devices[phys_device_idx], 
 					   &queue_family_property_count, 
 					   nullptr);
   std::cout << "Found " << queue_family_property_count << " queue " 
 	    << (queue_family_property_count == 1 ? "family " : "families ") 
 	    << "for this physical device." << std::endl;
   queue_family_properties.resize(queue_family_property_count);
-  vkGetPhysicalDeviceQueueFamilyProperties(physical_devices[0],
+  vkGetPhysicalDeviceQueueFamilyProperties(physical_devices[phys_device_idx],
 					   &queue_family_property_count,
 					   queue_family_properties.data());
 
@@ -248,7 +250,7 @@ int main(int argc, const char* argv[]) {
     = queue_family_properties[queue_family_idx].queueCount;
   
   VkPhysicalDeviceFeatures supported_features;
-  vkGetPhysicalDeviceFeatures(physical_devices[0], &supported_features);
+  vkGetPhysicalDeviceFeatures(physical_devices[phys_device_idx], &supported_features);
 
   std::vector<float> queue_priorities(queue_family_queue_count, 0.0);
   VkDeviceQueueCreateInfo device_queue_create_info = {};
@@ -276,7 +278,7 @@ int main(int argc, const char* argv[]) {
 
   VkDevice device;
   std::cout << "Creating device..." << std::endl;
-  res = vkCreateDevice(physical_devices[0],
+  res = vkCreateDevice(physical_devices[phys_device_idx],
    		       &device_create_info,
    		       CUSTOM_ALLOCATOR ? &alloc_callbacks : nullptr,
    		       &device);
