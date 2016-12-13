@@ -60,6 +60,7 @@ std::vector<VkQueueFamilyProperties> queue_family_properties;
 VkDevice device;
 std::vector<VkBuffer> buffers;
 std::vector<VkImage> images;
+std::vector<VkSubresourceLayout> subresource_layouts;
 
 void create_instance()
 {
@@ -298,6 +299,25 @@ void create_images()
   }
 }
 
+void get_subresource_layouts()
+{
+  subresource_layouts.resize(IMAGE_COUNT);
+  
+  VkImageSubresource img_subresource = {};
+  img_subresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+  img_subresource.mipLevel = 0;
+  img_subresource.arrayLayer = 0;
+
+  for (unsigned int i = 0; i != IMAGE_COUNT; i++) {
+    std::cout << "Getting subresource layout for image " << i << "..."
+	      << std::endl;
+    vkGetImageSubresourceLayout(device,
+				images[i],
+				&img_subresource,
+				&subresource_layouts[i]);
+  }
+}
+
 int main(int argc, const char* argv[])
 {
   if (SHOW_INSTANCE_LAYERS) {
@@ -397,23 +417,16 @@ int main(int argc, const char* argv[])
 
   create_images();
 
-  VkImageSubresource img_subresource = {};
-  img_subresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-  img_subresource.mipLevel = 0;
-  img_subresource.arrayLayer = 0;
+  get_subresource_layouts();
 
-  VkSubresourceLayout subresource_layout;
-  std::cout << "Getting subresource layout for image 0..."
-	    << std::endl;
-  vkGetImageSubresourceLayout(device,
-			      images[0],
-			      &img_subresource,
-			      &subresource_layout);
-  std::cout << "Subresource Offset: " << subresource_layout.offset
-	    << std::endl;
-  std::cout << "Subresource Size: " << subresource_layout.size
-	    << std::endl;
-
+  for (unsigned int i = 0; i != IMAGE_COUNT; i++)
+    std::cout << "Subresource " << i << ": off="
+	      << subresource_layouts[i].offset << ", size="
+	      << subresource_layouts[i].size << ", rowpitch="
+	      << subresource_layouts[i].rowPitch << ", arraypitch="
+	      << subresource_layouts[i].arrayPitch << ", depthpitch="
+	      << subresource_layouts[i].depthPitch << std::endl;
+  
   std::vector<VkMemoryRequirements> buf_mem_requirements;
   buf_mem_requirements.resize(BUFFER_COUNT);
   VkDeviceSize buf_mem_size = 0;
