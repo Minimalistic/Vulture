@@ -21,8 +21,8 @@
 
 #define CUSTOM_ALLOCATOR                false
 
-#define MEMORY_TYPE_BUFFER              0
-#define MEMORY_TYPE_IMAGE               1
+#define RESOURCE_BUFFER                 0
+#define RESOURCE_IMAGE                  1
 
 #define BUFFER_COUNT                    13
 #define IMAGE_COUNT                     21
@@ -42,8 +42,7 @@ std::vector<std::mutex> buffer_mutex(BUFFER_COUNT);
 std::vector<std::mutex> buffer_view_mutex(BUFFER_COUNT);
 std::vector<std::mutex> image_mutex(IMAGE_COUNT);
 std::vector<std::mutex> image_view_mutex(IMAGE_COUNT);
-std::mutex img_memory_mutex;
-std::mutex buf_memory_mutex;
+std::mutex memory_mutex[2];
 std::mutex command_pool_mutex;
 std::vector<std::mutex> command_buffer_mutex(COMMAND_BUFFER_COUNT);
 std::vector<std::mutex> queue_mutex(MAX_QUEUES);
@@ -53,6 +52,7 @@ allocator my_alloc = {};
 uint32_t phys_device_idx = 0;
 uint32_t queue_family_idx = 0;
 uint32_t queue_family_queue_count;
+uint32_t mem_types[2] = {UINT32_MAX, UINT32_MAX};
 
 VkResult res;
 VkInstance inst;
@@ -66,6 +66,8 @@ std::vector<VkImage> images;
 std::vector<VkSubresourceLayout> subresource_layouts;
 std::vector<VkMemoryRequirements> buf_mem_requirements;
 std::vector<VkMemoryRequirements> img_mem_requirements;
+VkDeviceSize mem_size[2];
+VkDeviceMemory memory[2];
 
 void create_instance()
 {
@@ -141,8 +143,9 @@ void enumerate_physical_devices()
 
 void get_physical_device_memory_properties()
 {
-  std::cout << "Getting memory properties for physical device " <<
-    phys_device_idx << "..." << std::endl;
+  std::cout << "Getting memory properties for physical device "
+	    << phys_device_idx << "..." << std::endl;
+
   vkGetPhysicalDeviceMemoryProperties(physical_devices[phys_device_idx],
 				      &physical_device_mem_props);
   std::printf("%-10s%-10s%-20s%-20s%-20s\n",
@@ -324,39 +327,35 @@ void get_subresource_layouts()
   }
 }
 
-VkDeviceSize get_buffer_memory_requirements()
+void get_buffer_memory_requirements()
 {
   buf_mem_requirements.resize(BUFFER_COUNT);
-  VkDeviceSize buf_mem_size = 0;
+  mem_size[RESOURCE_BUFFER] = 0;
   for (unsigned int i = 0; i != BUFFER_COUNT; i++) {
     std::cout << "Fetching memory requirements for buffer "
 	      << i << "..." << std::endl;
     vkGetBufferMemoryRequirements(device,
 				  buffers[i],
 				  &buf_mem_requirements[i]);
-    buf_mem_size += buf_mem_requirements[i].size;
+    mem_size[RESOURCE_BUFFER] += buf_mem_requirements[i].size;
   }
-  return buf_mem_size;
 }
 
-VkDeviceSize get_image_memory_requirements()
+void get_image_memory_requirements()
 {
   img_mem_requirements.resize(IMAGE_COUNT);
-  VkDeviceSize img_mem_size = 0;
+  mem_size[RESOURCE_IMAGE] = 0;
   for (unsigned int i = 0; i != IMAGE_COUNT; i++) {
     std::cout << "Fetching memory requirements for image "
 	      << i << "..." << std::endl;
     vkGetImageMemoryRequirements(device,
 				 images[i],
 				 &img_mem_requirements[i]);
-    img_mem_size += img_mem_requirements[i].size;
+    mem_size[RESOURCE_IMAGE] += img_mem_requirements[i].size;
   }
-  return img_mem_size;
 }
 
-void find_memory_types(uint32_t mem_types[],
-		       VkDeviceSize buf_mem_size,
-		       VkDeviceSize img_mem_size)
+void find_memory_types()
 {  
   for (uint32_t cur = 0;
        cur < physical_device_mem_props.memoryTypeCount;
@@ -370,24 +369,62 @@ void find_memory_types(uint32_t mem_types[],
 	!HOST_VISIBLE(mem_type.propertyFlags))
       continue;
     
-    if (mem_types[MEMORY_TYPE_BUFFER] == UINT32_MAX &&
-	buf_mem_size <= mem_heap.size &&
+    if (mem_types[RESOURCE_BUFFER] == UINT32_MAX &&
+	mem_size[RESOURCE_BUFFER] <= mem_heap.size &&
 	supports_mem_reqs(cur, buf_mem_requirements))
-      mem_types[MEMORY_TYPE_BUFFER] = cur;
+      mem_types[RESOURCE_BUFFER] = cur;
     
-    if (mem_types[MEMORY_TYPE_IMAGE] == UINT32_MAX &&
-	img_mem_size <= mem_heap.size &&
+    if (mem_types[RESOURCE_IMAGE] == UINT32_MAX &&
+	mem_size[RESOURCE_IMAGE] <= mem_heap.size &&
 	supports_mem_reqs(cur, img_mem_requirements))
-      if (cur == mem_types[MEMORY_TYPE_BUFFER] &&
-	  buf_mem_size+img_mem_size > mem_heap.size)
+      if (cur == mem_types[RESOURCE_BUFFER] &&
+	  mem_size[RESOURCE_BUFFER]+mem_size[RESOURCE_IMAGE] > mem_heap.size)
 	continue;
       else
-	mem_types[MEMORY_TYPE_IMAGE] = cur;
+	mem_types[RESOURCE_IMAGE] = cur;
 
-    if (mem_types[MEMORY_TYPE_BUFFER] != UINT32_MAX
-	&& mem_types[MEMORY_TYPE_IMAGE] != UINT32_MAX)
+    if (mem_types[RESOURCE_BUFFER] != UINT32_MAX
+	&& mem_types[RESOURCE_IMAGE] != UINT32_MAX)
       break;
   }
+}
+
+void allocate_buffer_memory()
+{
+  VkMemoryAllocateInfo buf_mem_allocate_info = {};
+  buf_mem_allocate_info.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+  buf_mem_allocate_info.pNext = nullptr;
+  buf_mem_allocate_info.allocationSize = mem_size[RESOURCE_BUFFER];
+  buf_mem_allocate_info.memoryTypeIndex = mem_types[RESOURCE_BUFFER];
+  
+  std::cout << "Allocating buffer memory..." << std::endl;
+  res = vkAllocateMemory(device,
+			 &buf_mem_allocate_info,
+			 CUSTOM_ALLOCATOR ? &alloc_callbacks : nullptr,
+			 &memory[RESOURCE_BUFFER]);
+  if (res == VK_SUCCESS)
+    std::cout << "Buffer memory allocated successfully!" << std::endl;
+  else
+    std::cout << "Failed to allocate buffer memory..." << std::endl;
+}
+
+void allocate_image_memory()
+{
+  VkMemoryAllocateInfo img_mem_allocate_info = {};
+  img_mem_allocate_info.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+  img_mem_allocate_info.pNext = nullptr;
+  img_mem_allocate_info.allocationSize = mem_size[RESOURCE_IMAGE];
+  img_mem_allocate_info.memoryTypeIndex = mem_types[RESOURCE_IMAGE];
+  
+  std::cout << "Allocating image memory..." << std::endl;
+  res = vkAllocateMemory(device,
+			 &img_mem_allocate_info,
+			 CUSTOM_ALLOCATOR ? &alloc_callbacks : nullptr,
+			 &memory[RESOURCE_IMAGE]);
+  if (res == VK_SUCCESS)
+    std::cout << "Image memory allocated successfully!" << std::endl;
+  else
+    std::cout << "Failed to allocate image memory..." << std::endl;
 }
 
 int main(int argc, const char* argv[])
@@ -499,70 +536,40 @@ int main(int argc, const char* argv[])
 	      << subresource_layouts[i].arrayPitch << ", depthpitch="
 	      << subresource_layouts[i].depthPitch << std::endl;
 
-  VkDeviceSize buf_mem_size = get_buffer_memory_requirements();
+  get_buffer_memory_requirements();
   
-  VkDeviceSize img_mem_size = get_image_memory_requirements();
+  get_image_memory_requirements();
 
-  std::cout << "Buffer memory size: " << buf_mem_size << std::endl;
-  std::cout << "Image memory size: " << img_mem_size << std::endl;
+  std::cout << "Buffer memory size: " << mem_size[RESOURCE_BUFFER] << std::endl;
+  std::cout << "Image memory size: " << mem_size[RESOURCE_IMAGE] << std::endl;
   
-  uint32_t mem_types[2] = {UINT32_MAX, UINT32_MAX};
-  find_memory_types(mem_types, buf_mem_size, img_mem_size);
-  if (mem_types[MEMORY_TYPE_IMAGE] != UINT32_MAX)
-    std::cout << "Found suitable memory type for images: "
-	      << mem_types[MEMORY_TYPE_IMAGE] << std::endl;
-  else
-    std::cout << "Could not find a suitable memory type for images..."
-	      << std::endl;
+  find_memory_types();
 
-  if (mem_types[MEMORY_TYPE_BUFFER] != UINT32_MAX)
+  if (mem_types[RESOURCE_BUFFER] != UINT32_MAX)
     std::cout << "Found suitable memory type for buffers: "
-	      << mem_types[MEMORY_TYPE_BUFFER] << std::endl;
+	      << mem_types[RESOURCE_BUFFER] << std::endl;
   else
     std::cout << "Could not find a suitable memory type for buffers..."
 	      << std::endl;
 
-  VkMemoryAllocateInfo buf_mem_allocate_info = {};
-  buf_mem_allocate_info.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-  buf_mem_allocate_info.pNext = nullptr;
-  buf_mem_allocate_info.allocationSize = buf_mem_size;
-  buf_mem_allocate_info.memoryTypeIndex = mem_types[MEMORY_TYPE_BUFFER];
-  
-  VkDeviceMemory buf_memory;
-  std::cout << "Allocating buffer memory..." << std::endl;
-  res = vkAllocateMemory(device,
-			 &buf_mem_allocate_info,
-			 CUSTOM_ALLOCATOR ? &alloc_callbacks : nullptr,
-			 &buf_memory);
-  if (res == VK_SUCCESS)
-    std::cout << "Buffer memory allocated successfully!" << std::endl;
+  if (mem_types[RESOURCE_IMAGE] != UINT32_MAX)
+    std::cout << "Found suitable memory type for images: "
+	      << mem_types[RESOURCE_IMAGE] << std::endl;
   else
-    std::cout << "Failed to allocate buffer memory..." << std::endl;
+    std::cout << "Could not find a suitable memory type for images..."
+	      << std::endl;
 
-  VkMemoryAllocateInfo img_mem_allocate_info = {};
-  img_mem_allocate_info.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-  img_mem_allocate_info.pNext = nullptr;
-  img_mem_allocate_info.allocationSize = img_mem_size;
-  img_mem_allocate_info.memoryTypeIndex = mem_types[MEMORY_TYPE_IMAGE];
+  allocate_buffer_memory();
+
+  allocate_image_memory();
   
-  VkDeviceMemory img_memory;
-  std::cout << "Allocating image memory..." << std::endl;
-  res = vkAllocateMemory(device,
-			 &img_mem_allocate_info,
-			 CUSTOM_ALLOCATOR ? &alloc_callbacks : nullptr,
-			 &img_memory);
-  if (res == VK_SUCCESS)
-    std::cout << "Image memory allocated successfully!" << std::endl;
-  else
-    std::cout << "Failed to allocate image memory..." << std::endl;
-
   void* img_data = nullptr;
   // Map image memory
   {
     std::cout << "Mapping image memory..." << std::endl;
-    std::lock_guard<std::mutex> lock(img_memory_mutex);
+    std::lock_guard<std::mutex> lock(memory_mutex[RESOURCE_IMAGE]);
     res = vkMapMemory(device,
-		      img_memory,
+		      memory[RESOURCE_IMAGE],
 		      0,
 		      VK_WHOLE_SIZE,
 		      0,
@@ -577,19 +584,19 @@ int main(int argc, const char* argv[])
 
   // Unmap image memory
   {
-    std::lock_guard<std::mutex> lock(img_memory_mutex);
+    std::lock_guard<std::mutex> lock(memory_mutex[RESOURCE_IMAGE]);
     std::cout << "Unmapping image memory..." << std::endl;
     vkUnmapMemory(device,
-		  img_memory);
+		  memory[RESOURCE_IMAGE]);
   }
   
   void* buf_data;
   // Map buffer memory
   {
     std::cout << "Mapping buffer memory..." << std::endl;
-    std::lock_guard<std::mutex> lock(buf_memory_mutex);
+    std::lock_guard<std::mutex> lock(memory_mutex[RESOURCE_BUFFER]);
     res = vkMapMemory(device,
-		      buf_memory,
+		      memory[RESOURCE_BUFFER],
 		      0,
 		      VK_WHOLE_SIZE,
 		      0,
@@ -600,7 +607,7 @@ int main(int argc, const char* argv[])
       std::cout << "Failed to map buffer memory..." << std::endl;
   }
 
-  char* str = new char[buf_mem_size];
+  char* str = new char[mem_size[RESOURCE_BUFFER]];
   unsigned int k = 0;
   for (unsigned int i = 0; i != BUFFER_COUNT; i++) {
     for (unsigned int j = 0; j != buf_mem_requirements[i].size; j++) {
@@ -609,16 +616,16 @@ int main(int argc, const char* argv[])
       str[k++] = c;
     }
   }
-  str[buf_mem_size-1] = '\0';
-  memcpy(buf_data, str, buf_mem_size);
+  str[mem_size[RESOURCE_BUFFER]-1] = '\0';
+  memcpy(buf_data, str, mem_size[RESOURCE_BUFFER]);
   delete[](str);
 
   // Unmap buffer memory
   {
-    std::lock_guard<std::mutex> lock(buf_memory_mutex);
+    std::lock_guard<std::mutex> lock(memory_mutex[RESOURCE_BUFFER]);
     std::cout << "Unmapping buffer memory..." << std::endl;
     vkUnmapMemory(device,
-		  buf_memory);
+		  memory[RESOURCE_BUFFER]);
   }
 
   // Bind buffer memory
@@ -633,7 +640,7 @@ int main(int argc, const char* argv[])
 		<< "..." << std::endl;
       res = vkBindBufferMemory(device,
 			       buffers[i],
-			       buf_memory,
+			       memory[RESOURCE_BUFFER],
 			       offset);
       offset += buf_mem_requirements[i].size;
       if (res == VK_SUCCESS)
@@ -658,7 +665,7 @@ int main(int argc, const char* argv[])
       locks[i].lock();
       res = vkBindImageMemory(device,
 			      images[i],
-			      img_memory,
+			      memory[RESOURCE_IMAGE],
 			      offset);
       offset += img_mem_requirements[i].size;
       if (res == VK_SUCCESS)
@@ -879,10 +886,16 @@ int main(int argc, const char* argv[])
   std::cout << "Before submit:" << std::endl;
   std::cout << "Buffer 0 (offset=" << READ_OFFSET << ", len="
 	    << READ_LENGTH << "): ";
-  print_mem(device, buf_memory, buf_memory_mutex, READ_OFFSET, READ_LENGTH);
+  print_mem(device,
+	    memory[RESOURCE_BUFFER],
+	    memory_mutex[RESOURCE_BUFFER],
+	    READ_OFFSET,
+	    READ_LENGTH);
   std::cout << "Buffer 1 (offset=" << READ_OFFSET << ", len="
 	    << READ_LENGTH << "): ";
-  print_mem(device, buf_memory, buf_memory_mutex,
+  print_mem(device,
+	    memory[RESOURCE_BUFFER],
+	    memory_mutex[RESOURCE_BUFFER],
 	    READ_OFFSET + buf_mem_requirements[0].size,
 	    READ_LENGTH);
 
@@ -932,10 +945,16 @@ int main(int argc, const char* argv[])
   std::cout << "After submit:" << std::endl;
   std::cout << "Buffer 0 (offset=" << READ_OFFSET << ", len="
 	    << READ_LENGTH << "): ";
-  print_mem(device, buf_memory, buf_memory_mutex, READ_OFFSET, READ_LENGTH);
+  print_mem(device,
+	    memory[RESOURCE_BUFFER],
+	    memory_mutex[RESOURCE_BUFFER],
+	    READ_OFFSET,
+	    READ_LENGTH);
   std::cout << "Buffer 1 (offset=" << READ_OFFSET << ", len="
 	    << READ_LENGTH << "): ";
-  print_mem(device, buf_memory, buf_memory_mutex,
+  print_mem(device,
+	    memory[RESOURCE_BUFFER],
+	    memory_mutex[RESOURCE_BUFFER],
 	    READ_OFFSET + buf_mem_requirements[0].size,
 	    READ_LENGTH);
 
@@ -1016,19 +1035,19 @@ int main(int argc, const char* argv[])
 
   // Free buffer memory
   {
-    std::lock_guard<std::mutex> lock(buf_memory_mutex);
+    std::lock_guard<std::mutex> lock(memory_mutex[RESOURCE_BUFFER]);
     std::cout << "Freeing buffer memory..." << std::endl;
     vkFreeMemory(device,
-		 buf_memory,
+		 memory[RESOURCE_BUFFER],
 		 CUSTOM_ALLOCATOR ? &alloc_callbacks : nullptr);
   }
 
   // Free image memory
   {
-    std::lock_guard<std::mutex> lock(img_memory_mutex);
+    std::lock_guard<std::mutex> lock(memory_mutex[RESOURCE_IMAGE]);
     std::cout << "Freeing image memory..." << std::endl;
     vkFreeMemory(device,
-		 img_memory,
+		 memory[RESOURCE_IMAGE],
 		 CUSTOM_ALLOCATOR ? &alloc_callbacks : nullptr);
   }
   
