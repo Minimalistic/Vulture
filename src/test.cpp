@@ -61,6 +61,8 @@ VkDevice device;
 std::vector<VkBuffer> buffers;
 std::vector<VkImage> images;
 std::vector<VkSubresourceLayout> subresource_layouts;
+std::vector<VkMemoryRequirements> buf_mem_requirements;
+std::vector<VkMemoryRequirements> img_mem_requirements;
 
 void create_instance()
 {
@@ -318,6 +320,36 @@ void get_subresource_layouts()
   }
 }
 
+VkDeviceSize get_buffer_memory_requirements()
+{
+  buf_mem_requirements.resize(BUFFER_COUNT);
+  VkDeviceSize buf_mem_size = 0;
+  for (unsigned int i = 0; i != BUFFER_COUNT; i++) {
+    std::cout << "Fetching memory requirements for buffer "
+	      << i << "..." << std::endl;
+    vkGetBufferMemoryRequirements(device,
+				  buffers[i],
+				  &buf_mem_requirements[i]);
+    buf_mem_size += buf_mem_requirements[i].size;
+  }
+  return buf_mem_size;
+}
+
+VkDeviceSize get_image_memory_requirements()
+{
+  img_mem_requirements.resize(IMAGE_COUNT);
+  VkDeviceSize img_mem_size = 0;
+  for (unsigned int i = 0; i != IMAGE_COUNT; i++) {
+    std::cout << "Fetching memory requirements for image "
+	      << i << "..." << std::endl;
+    vkGetImageMemoryRequirements(device,
+				 images[i],
+				 &img_mem_requirements[i]);
+    img_mem_size += img_mem_requirements[i].size;
+  }
+  return img_mem_size;
+}
+
 int main(int argc, const char* argv[])
 {
   if (SHOW_INSTANCE_LAYERS) {
@@ -426,29 +458,13 @@ int main(int argc, const char* argv[])
 	      << subresource_layouts[i].rowPitch << ", arraypitch="
 	      << subresource_layouts[i].arrayPitch << ", depthpitch="
 	      << subresource_layouts[i].depthPitch << std::endl;
+
+  VkDeviceSize buf_mem_size = get_buffer_memory_requirements();
   
-  std::vector<VkMemoryRequirements> buf_mem_requirements;
-  buf_mem_requirements.resize(BUFFER_COUNT);
-  VkDeviceSize buf_mem_size = 0;
-  for (unsigned int i = 0; i != BUFFER_COUNT; i++) {
-    std::cout << "Fetching memory requirements for buffer "
-	      << i << "..." << std::endl;
-    vkGetBufferMemoryRequirements(device,
-				  buffers[i],
-				  &buf_mem_requirements[i]);
-    buf_mem_size += buf_mem_requirements[i].size;
-  }
-  std::vector<VkMemoryRequirements> img_mem_requirements;
-  img_mem_requirements.resize(IMAGE_COUNT);
-  VkDeviceSize img_mem_size = 0;
-  for (unsigned int i = 0; i != IMAGE_COUNT; i++) {
-    std::cout << "Fetching memory requirements for image "
-	      << i << "..." << std::endl;
-    vkGetImageMemoryRequirements(device,
-				 images[i],
-				 &img_mem_requirements[i]);
-    img_mem_size += img_mem_requirements[i].size;
-  }
+  VkDeviceSize img_mem_size = get_image_memory_requirements();
+
+  std::cout << "Buffer memory size: " << buf_mem_size << std::endl;
+  std::cout << "Image memory size: " << img_mem_size << std::endl;
   
   uint32_t buf_mem_type_idx = UINT32_MAX;
   uint32_t img_mem_type_idx = UINT32_MAX;
@@ -636,8 +652,8 @@ int main(int argc, const char* argv[])
 			      offset);
       offset += img_mem_requirements[i].size;
       if (res == VK_SUCCESS)
-	std::cout << "Image memory bound for image " << i << " successfully!"
-		  << std::endl;
+	std::cout << "Image memory bound for image " << i
+		  << " successfully!" << std::endl;
       else
 	std::cout << "Failed to bind image memory for image "
 		  << i << "..." << std::endl;
