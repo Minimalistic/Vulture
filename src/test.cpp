@@ -21,6 +21,9 @@
 
 #define CUSTOM_ALLOCATOR                false
 
+#define MEMORY_TYPE_BUFFER              0
+#define MEMORY_TYPE_IMAGE               1
+
 #define BUFFER_COUNT                    13
 #define IMAGE_COUNT                     21
 #define COMMAND_BUFFER_COUNT            5
@@ -157,7 +160,8 @@ void get_physical_device_memory_properties()
   }
 }
 
-void get_queue_family_properties() {
+void get_queue_family_properties()
+{
   uint32_t queue_family_property_count;
   vkGetPhysicalDeviceQueueFamilyProperties(physical_devices[phys_device_idx], 
 					   &queue_family_property_count, 
@@ -350,6 +354,42 @@ VkDeviceSize get_image_memory_requirements()
   return img_mem_size;
 }
 
+void find_memory_types(uint32_t mem_types[],
+		       VkDeviceSize buf_mem_size,
+		       VkDeviceSize img_mem_size)
+{  
+  for (uint32_t cur = 0;
+       cur < physical_device_mem_props.memoryTypeCount;
+       cur++) {
+    VkMemoryType& mem_type = physical_device_mem_props.memoryTypes[cur];
+    VkMemoryHeap& mem_heap =
+      physical_device_mem_props.memoryHeaps[mem_type.heapIndex];
+    
+    if (mem_heap.size <= 0 ||
+	!HOST_COHERENT(mem_type.propertyFlags) ||
+	!HOST_VISIBLE(mem_type.propertyFlags))
+      continue;
+    
+    if (mem_types[MEMORY_TYPE_BUFFER] == UINT32_MAX &&
+	buf_mem_size <= mem_heap.size &&
+	supports_mem_reqs(cur, buf_mem_requirements))
+      mem_types[MEMORY_TYPE_BUFFER] = cur;
+    
+    if (mem_types[MEMORY_TYPE_IMAGE] == UINT32_MAX &&
+	img_mem_size <= mem_heap.size &&
+	supports_mem_reqs(cur, img_mem_requirements))
+      if (cur == mem_types[MEMORY_TYPE_BUFFER] &&
+	  buf_mem_size+img_mem_size > mem_heap.size)
+	continue;
+      else
+	mem_types[MEMORY_TYPE_IMAGE] = cur;
+
+    if (mem_types[MEMORY_TYPE_BUFFER] != UINT32_MAX
+	&& mem_types[MEMORY_TYPE_IMAGE] != UINT32_MAX)
+      break;
+  }
+}
+
 int main(int argc, const char* argv[])
 {
   if (SHOW_INSTANCE_LAYERS) {
@@ -466,57 +506,27 @@ int main(int argc, const char* argv[])
   std::cout << "Buffer memory size: " << buf_mem_size << std::endl;
   std::cout << "Image memory size: " << img_mem_size << std::endl;
   
-  uint32_t buf_mem_type_idx = UINT32_MAX;
-  uint32_t img_mem_type_idx = UINT32_MAX;
-  for (uint32_t cur = 0;
-       cur < physical_device_mem_props.memoryTypeCount;
-       cur++) {
-    VkMemoryType& mem_type = physical_device_mem_props.memoryTypes[cur];
-    VkMemoryHeap& mem_heap =
-      physical_device_mem_props.memoryHeaps[mem_type.heapIndex];
-    
-    if (mem_heap.size <= 0 ||
-	!HOST_COHERENT(mem_type.propertyFlags) ||
-	!HOST_VISIBLE(mem_type.propertyFlags))
-      continue;
-    
-    if (buf_mem_type_idx == UINT32_MAX &&
-	buf_mem_size <= mem_heap.size &&
-	supports_mem_reqs(cur, buf_mem_requirements))
-      buf_mem_type_idx = cur;
-    
-    if (img_mem_type_idx == UINT32_MAX &&
-	img_mem_size <= mem_heap.size &&
-	supports_mem_reqs(cur, img_mem_requirements))
-      if (cur == buf_mem_type_idx &&
-	  buf_mem_size+img_mem_size > mem_heap.size)
-	continue;
-      else
-	img_mem_type_idx = cur;
-
-    if (buf_mem_type_idx != UINT32_MAX && img_mem_type_idx != UINT32_MAX)
-      break;
-  }
-
-  if (img_mem_type_idx != UINT32_MAX)
+  uint32_t mem_types[2] = {UINT32_MAX, UINT32_MAX};
+  find_memory_types(mem_types, buf_mem_size, img_mem_size);
+  if (mem_types[MEMORY_TYPE_IMAGE] != UINT32_MAX)
     std::cout << "Found suitable memory type for images: "
-	      << img_mem_type_idx << std::endl;
+	      << mem_types[MEMORY_TYPE_IMAGE] << std::endl;
   else
     std::cout << "Could not find a suitable memory type for images..."
 	      << std::endl;
 
-  if (buf_mem_type_idx != UINT32_MAX)
+  if (mem_types[MEMORY_TYPE_BUFFER] != UINT32_MAX)
     std::cout << "Found suitable memory type for buffers: "
-	      << buf_mem_type_idx << std::endl;
+	      << mem_types[MEMORY_TYPE_BUFFER] << std::endl;
   else
     std::cout << "Could not find a suitable memory type for buffers..."
 	      << std::endl;
-  
+
   VkMemoryAllocateInfo buf_mem_allocate_info = {};
   buf_mem_allocate_info.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
   buf_mem_allocate_info.pNext = nullptr;
   buf_mem_allocate_info.allocationSize = buf_mem_size;
-  buf_mem_allocate_info.memoryTypeIndex = buf_mem_type_idx;
+  buf_mem_allocate_info.memoryTypeIndex = mem_types[MEMORY_TYPE_BUFFER];
   
   VkDeviceMemory buf_memory;
   std::cout << "Allocating buffer memory..." << std::endl;
@@ -533,7 +543,7 @@ int main(int argc, const char* argv[])
   img_mem_allocate_info.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
   img_mem_allocate_info.pNext = nullptr;
   img_mem_allocate_info.allocationSize = img_mem_size;
-  img_mem_allocate_info.memoryTypeIndex = img_mem_type_idx;
+  img_mem_allocate_info.memoryTypeIndex = mem_types[MEMORY_TYPE_IMAGE];
   
   VkDeviceMemory img_memory;
   std::cout << "Allocating image memory..." << std::endl;
