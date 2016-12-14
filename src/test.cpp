@@ -68,6 +68,8 @@ std::vector<VkMemoryRequirements> buf_mem_requirements;
 std::vector<VkMemoryRequirements> img_mem_requirements;
 VkDeviceSize mem_size[2];
 VkDeviceMemory memory[2];
+std::vector<VkBufferView> buffer_views;
+std::vector<VkImageView> image_views;
 
 void create_instance()
 {
@@ -534,6 +536,80 @@ void bind_image_memory()
   }
 }
 
+void create_buffer_views()
+{
+  buffer_views.resize(BUFFER_COUNT);
+  for (unsigned int i = 0; i != BUFFER_COUNT; i++) {
+    VkBufferViewCreateInfo buf_view_create_info = {};
+    buf_view_create_info.sType = VK_STRUCTURE_TYPE_BUFFER_VIEW_CREATE_INFO;
+    buf_view_create_info.pNext = nullptr;
+    buf_view_create_info.flags = 0;
+    buf_view_create_info.buffer = buffers[i];
+    buf_view_create_info.format = VK_FORMAT_R8G8B8A8_UNORM;
+    buf_view_create_info.offset = 0;
+    buf_view_create_info.range = VK_WHOLE_SIZE;
+
+    std::cout << "Creating buffer view " << i << "..." << std::endl;
+    res = vkCreateBufferView(device,
+			     &buf_view_create_info,
+			     CUSTOM_ALLOCATOR ? &alloc_callbacks : nullptr,
+			     &buffer_views[i]);
+    if (res == VK_SUCCESS)
+      std::cout << "Buffer view " << i << " created successfully!"
+		<< std::endl;
+    else
+      std::cout << "Failed to create buffer view " << i
+		<< "..." << std::endl;
+  }
+}
+
+void create_image_views()
+{
+  image_views.resize(IMAGE_COUNT);
+  for (unsigned int i = 0; i != IMAGE_COUNT; i++) {
+    VkImageViewCreateInfo img_view_create_info = {};
+    img_view_create_info.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+    img_view_create_info.pNext = nullptr;
+    img_view_create_info.flags = 0;
+    img_view_create_info.image = images[i];
+    img_view_create_info.viewType = VK_IMAGE_VIEW_TYPE_2D;
+    img_view_create_info.format = VK_FORMAT_R8G8B8A8_UNORM;
+    VkComponentMapping component_mapping = {};
+    component_mapping.r = VK_COMPONENT_SWIZZLE_IDENTITY;
+    component_mapping.g = VK_COMPONENT_SWIZZLE_IDENTITY;
+    component_mapping.b = VK_COMPONENT_SWIZZLE_IDENTITY;
+    component_mapping.a = VK_COMPONENT_SWIZZLE_IDENTITY;
+    img_view_create_info.components = component_mapping;
+    VkImageSubresourceRange subresource_range = {};
+    subresource_range.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    subresource_range.baseMipLevel = 0;
+    subresource_range.levelCount = 1;
+    subresource_range.baseArrayLayer = 0;
+    subresource_range.layerCount = 1;
+    img_view_create_info.subresourceRange = subresource_range;
+    std::cout << "Creating image view " << i << "..." << std::endl;
+    res = vkCreateImageView(device,
+			    &img_view_create_info,
+			    CUSTOM_ALLOCATOR ? &alloc_callbacks : nullptr,
+			    &image_views[i]);
+    if (res == VK_SUCCESS)
+      std::cout << "Image view " << i << " created successfully!"
+		<< std::endl;
+    else if (res == VK_ERROR_OUT_OF_HOST_MEMORY)
+      std::cout << "Failed to create image view " << i
+		<< ": out of host memory" << std::endl;
+    else if (res == VK_ERROR_OUT_OF_DEVICE_MEMORY)
+      std::cout << "Failed to create image view " << i
+		<< ": out of device memory" << std::endl;
+    else if (res == VK_ERROR_VALIDATION_FAILED_EXT)
+      std::cout << "Failed to create image view " << i
+		<< ": validation failed" << std::endl;
+    else
+      std::cout << "Failed to create image view " << i
+		<< ": unknown error" << std::endl;
+  }
+}
+
 int main(int argc, const char* argv[])
 {
   if (SHOW_INSTANCE_LAYERS) {
@@ -674,81 +750,9 @@ int main(int argc, const char* argv[])
 
   bind_buffer_memory();
   bind_image_memory();
-  
-  std::vector<VkBufferView> buffer_views;
-  buffer_views.resize(BUFFER_COUNT);
-  {
-    for (unsigned int i = 0; i != BUFFER_COUNT; i++) {
-      VkBufferViewCreateInfo buf_view_create_info = {};
-      buf_view_create_info.sType = VK_STRUCTURE_TYPE_BUFFER_VIEW_CREATE_INFO;
-      buf_view_create_info.pNext = nullptr;
-      buf_view_create_info.flags = 0;
-      buf_view_create_info.buffer = buffers[i];
-      buf_view_create_info.format = VK_FORMAT_R8G8B8A8_UNORM;
-      buf_view_create_info.offset = 0;
-      buf_view_create_info.range = VK_WHOLE_SIZE;
 
-      std::cout << "Creating buffer view " << i << "..." << std::endl;
-      res = vkCreateBufferView(device,
-			       &buf_view_create_info,
-			       CUSTOM_ALLOCATOR ? &alloc_callbacks : nullptr,
-			       &buffer_views[i]);
-      if (res == VK_SUCCESS)
-	std::cout << "Buffer view " << i << " created successfully!"
-		  << std::endl;
-      else
-	std::cout << "Failed to create buffer view " << i
-		  << "..." << std::endl;
-    }
-  }
-
-  // Create image views
-  std::vector<VkImageView> image_views;
-  image_views.resize(IMAGE_COUNT);
-  {
-    for (unsigned int i = 0; i != IMAGE_COUNT; i++) {
-      VkImageViewCreateInfo img_view_create_info = {};
-      img_view_create_info.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-      img_view_create_info.pNext = nullptr;
-      img_view_create_info.flags = 0;
-      img_view_create_info.image = images[i];
-      img_view_create_info.viewType = VK_IMAGE_VIEW_TYPE_2D;
-      img_view_create_info.format = VK_FORMAT_R8G8B8A8_UNORM;
-      VkComponentMapping component_mapping = {};
-      component_mapping.r = VK_COMPONENT_SWIZZLE_IDENTITY;
-      component_mapping.g = VK_COMPONENT_SWIZZLE_IDENTITY;
-      component_mapping.b = VK_COMPONENT_SWIZZLE_IDENTITY;
-      component_mapping.a = VK_COMPONENT_SWIZZLE_IDENTITY;
-      img_view_create_info.components = component_mapping;
-      VkImageSubresourceRange subresource_range = {};
-      subresource_range.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-      subresource_range.baseMipLevel = 0;
-      subresource_range.levelCount = 1;
-      subresource_range.baseArrayLayer = 0;
-      subresource_range.layerCount = 1;
-      img_view_create_info.subresourceRange = subresource_range;
-      std::cout << "Creating image view " << i << "..." << std::endl;
-      res = vkCreateImageView(device,
-			      &img_view_create_info,
-			      CUSTOM_ALLOCATOR ? &alloc_callbacks : nullptr,
-			      &image_views[i]);
-      if (res == VK_SUCCESS)
-	std::cout << "Image view " << i << " created successfully!"
-		  << std::endl;
-      else if (res == VK_ERROR_OUT_OF_HOST_MEMORY)
-	std::cout << "Failed to create image view " << i
-		  << ": out of host memory" << std::endl;
-      else if (res == VK_ERROR_OUT_OF_DEVICE_MEMORY)
-	std::cout << "Failed to create image view " << i
-		  << ": out of device memory" << std::endl;
-      else if (res == VK_ERROR_VALIDATION_FAILED_EXT)
-	std::cout << "Failed to create image view " << i
-		  << ": validation failed" << std::endl;
-      else
-	std::cout << "Failed to create image view " << i
-		  << ": unknown error" << std::endl;
-    }
-  }
+  create_buffer_views();
+  create_image_views();
 
   // Right now it seems the only way to check validity is by enabling
   // the standard validation layer
