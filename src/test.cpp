@@ -430,22 +430,19 @@ void allocate_image_memory()
 void write_buffer_memory()
 {
   void* buf_data;
-  // Map buffer memory
-  {
-    std::cout << "Mapping buffer memory..." << std::endl;
-    std::lock_guard<std::mutex> lock(memory_mutex[RESOURCE_BUFFER]);
-    res = vkMapMemory(device,
-		      memory[RESOURCE_BUFFER],
-		      0,
-		      VK_WHOLE_SIZE,
-		      0,
-		      &buf_data);
-    if (res == VK_SUCCESS)
-      std::cout << "Buffer memory mapped successfully!" << std::endl;
-    else
-      std::cout << "Failed to map buffer memory..." << std::endl;
-  }
-
+  std::cout << "Mapping buffer memory..." << std::endl;
+  std::lock_guard<std::mutex> lock(memory_mutex[RESOURCE_BUFFER]);
+  res = vkMapMemory(device,
+		    memory[RESOURCE_BUFFER],
+		    0,
+		    VK_WHOLE_SIZE,
+		    0,
+		    &buf_data);
+  if (res == VK_SUCCESS)
+    std::cout << "Buffer memory mapped successfully!" << std::endl;
+  else
+    std::cout << "Failed to map buffer memory..." << std::endl;
+ 
   char* str = new char[mem_size[RESOURCE_BUFFER]];
   unsigned int k = 0;
   for (unsigned int i = 0; i != BUFFER_COUNT; i++) {
@@ -459,42 +456,81 @@ void write_buffer_memory()
   memcpy(buf_data, str, mem_size[RESOURCE_BUFFER]);
   delete[](str);
 
-  // Unmap buffer memory
-  {
-    std::lock_guard<std::mutex> lock(memory_mutex[RESOURCE_BUFFER]);
-    std::cout << "Unmapping buffer memory..." << std::endl;
-    vkUnmapMemory(device,
-		  memory[RESOURCE_BUFFER]);
-  }
+  std::cout << "Unmapping buffer memory..." << std::endl;
+  vkUnmapMemory(device,
+		memory[RESOURCE_BUFFER]);
 }
 
 void write_image_memory()
 {
   void* img_data = nullptr;
-  // Map image memory
-  {
-    std::cout << "Mapping image memory..." << std::endl;
-    std::lock_guard<std::mutex> lock(memory_mutex[RESOURCE_IMAGE]);
-    res = vkMapMemory(device,
-		      memory[RESOURCE_IMAGE],
-		      0,
-		      VK_WHOLE_SIZE,
-		      0,
-		      &img_data);
-    if (res == VK_SUCCESS)
-      std::cout << "Image memory mapped successfully!" << std::endl;
-    else
-      std::cout << "Failed to map image memory..." << std::endl;
-  }
+  std::cout << "Mapping image memory..." << std::endl;
+  std::lock_guard<std::mutex> lock(memory_mutex[RESOURCE_IMAGE]);
+  res = vkMapMemory(device,
+		    memory[RESOURCE_IMAGE],
+		    0,
+		    VK_WHOLE_SIZE,
+		    0,
+		    &img_data);
+  if (res == VK_SUCCESS)
+    std::cout << "Image memory mapped successfully!" << std::endl;
+  else
+    std::cout << "Failed to map image memory..." << std::endl;
 
   // TODO: Write data to image memory
 
-  // Unmap image memory
-  {
-    std::lock_guard<std::mutex> lock(memory_mutex[RESOURCE_IMAGE]);
-    std::cout << "Unmapping image memory..." << std::endl;
-    vkUnmapMemory(device,
-		  memory[RESOURCE_IMAGE]);
+  std::cout << "Unmapping image memory..." << std::endl;
+  vkUnmapMemory(device,
+		memory[RESOURCE_IMAGE]);
+}
+
+void bind_buffer_memory()
+{
+  std::vector<std::unique_lock<std::mutex>> locks;
+  for (auto& mut : buffer_mutex)
+    locks.emplace_back(mut, std::defer_lock);
+  VkDeviceSize offset = 0;
+  for (unsigned int i = 0; i != BUFFER_COUNT; i++) {
+    locks[i].lock();
+    std::cout << "Binding buffer memory to buffer " << i
+	      << "..." << std::endl;
+    res = vkBindBufferMemory(device,
+			     buffers[i],
+			     memory[RESOURCE_BUFFER],
+			     offset);
+    offset += buf_mem_requirements[i].size;
+    if (res == VK_SUCCESS)
+      std::cout << "Buffer memory bound to buffer " << i
+		<< " successfully!" << std::endl;
+    else
+      std::cout << "Failed to bind buffer memory to buffer " << i
+		<< "..." << std::endl;
+    locks[i].unlock();
+  }
+}
+
+void bind_image_memory()
+{
+  std::vector<std::unique_lock<std::mutex>> locks;
+  for (auto& mut : image_mutex)
+    locks.emplace_back(mut, std::defer_lock);
+  VkDeviceSize offset = 0;
+  for (unsigned int i = 0; i != IMAGE_COUNT; i++) {
+    std::cout << "Binding image memory to image "
+	      << i << "..." << std::endl;
+    locks[i].lock();
+    res = vkBindImageMemory(device,
+			    images[i],
+			    memory[RESOURCE_IMAGE],
+			    offset);
+    offset += img_mem_requirements[i].size;
+    if (res == VK_SUCCESS)
+      std::cout << "Image memory bound for image " << i
+		<< " successfully!" << std::endl;
+    else
+      std::cout << "Failed to bind image memory for image "
+		<< i << "..." << std::endl;
+    locks[i].unlock();
   }
 }
 
@@ -636,56 +672,9 @@ int main(int argc, const char* argv[])
   write_buffer_memory();
   write_image_memory();
 
-  // Bind buffer memory
-  {
-    std::vector<std::unique_lock<std::mutex>> locks;
-    for (auto& mut : buffer_mutex)
-      locks.emplace_back(mut, std::defer_lock);
-    VkDeviceSize offset = 0;
-    for (unsigned int i = 0; i != BUFFER_COUNT; i++) {
-      locks[i].lock();
-      std::cout << "Binding buffer memory to buffer " << i
-		<< "..." << std::endl;
-      res = vkBindBufferMemory(device,
-			       buffers[i],
-			       memory[RESOURCE_BUFFER],
-			       offset);
-      offset += buf_mem_requirements[i].size;
-      if (res == VK_SUCCESS)
-	std::cout << "Buffer memory bound to buffer " << i
-		  << " successfully!" << std::endl;
-      else
-	std::cout << "Failed to bind buffer memory to buffer " << i
-		  << "..." << std::endl;
-      locks[i].unlock();
-    }
-  }
-
-  // Bind image memory
-  {
-    std::vector<std::unique_lock<std::mutex>> locks;
-    for (auto& mut : image_mutex)
-      locks.emplace_back(mut, std::defer_lock);
-    VkDeviceSize offset = 0;
-    for (unsigned int i = 0; i != IMAGE_COUNT; i++) {
-      std::cout << "Binding image memory to image "
-		<< i << "..." << std::endl;
-      locks[i].lock();
-      res = vkBindImageMemory(device,
-			      images[i],
-			      memory[RESOURCE_IMAGE],
-			      offset);
-      offset += img_mem_requirements[i].size;
-      if (res == VK_SUCCESS)
-	std::cout << "Image memory bound for image " << i
-		  << " successfully!" << std::endl;
-      else
-	std::cout << "Failed to bind image memory for image "
-		  << i << "..." << std::endl;
-      locks[i].unlock();
-    }
-  }
-
+  bind_buffer_memory();
+  bind_image_memory();
+  
   std::vector<VkBufferView> buffer_views;
   buffer_views.resize(BUFFER_COUNT);
   {
