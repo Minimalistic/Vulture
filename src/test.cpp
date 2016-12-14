@@ -70,6 +70,7 @@ VkDeviceSize mem_size[2];
 VkDeviceMemory memory[2];
 std::vector<VkBufferView> buffer_views;
 std::vector<VkImageView> image_views;
+std::vector<VkQueue> queues;
 
 void create_instance()
 {
@@ -610,6 +611,21 @@ void create_image_views()
   }
 }
 
+void get_queues()
+{
+  queues.resize(queue_family_queue_count);
+  for (unsigned int queue_idx = 0;
+       queue_idx != queue_family_queue_count;
+       queue_idx++) {
+    std::cout << "Obtaining device queue " << (queue_idx+1)
+	      << "/" << queue_family_queue_count << "..." << std::endl;
+    vkGetDeviceQueue(device,
+		     queue_family_idx,
+		     queue_idx,
+		     &queues[queue_idx]);
+  }
+}
+
 int main(int argc, const char* argv[])
 {
   if (SHOW_INSTANCE_LAYERS) {
@@ -723,8 +739,10 @@ int main(int argc, const char* argv[])
   
   get_image_memory_requirements();
 
-  std::cout << "Buffer memory size: " << mem_size[RESOURCE_BUFFER] << std::endl;
-  std::cout << "Image memory size: " << mem_size[RESOURCE_IMAGE] << std::endl;
+  std::cout << "Buffer memory size: "
+	    << mem_size[RESOURCE_BUFFER] << std::endl;
+  std::cout << "Image memory size: "
+	    << mem_size[RESOURCE_IMAGE] << std::endl;
   
   find_memory_types();
 
@@ -754,21 +772,8 @@ int main(int argc, const char* argv[])
   create_buffer_views();
   create_image_views();
 
-  // Right now it seems the only way to check validity is by enabling
-  // the standard validation layer
-  std::vector<VkQueue> queues;
-  queues.resize(queue_family_queue_count);
-  for (unsigned int queue_idx = 0;
-       queue_idx != queue_family_queue_count;
-       queue_idx++) {
-    std::cout << "Obtaining device queue " << (queue_idx+1)
-	      << "/" << queue_family_queue_count << "..." << std::endl;
-    vkGetDeviceQueue(device,
-		     queue_family_idx,
-		     queue_idx,
-		     &queues[queue_idx]);
-  }
-
+  get_queues();
+  
   VkCommandPool command_pool;
   std::cout << "Creating command pool..." << std::endl;
   VkCommandPoolCreateInfo cmd_pool_create_info = {};
