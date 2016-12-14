@@ -427,6 +427,77 @@ void allocate_image_memory()
     std::cout << "Failed to allocate image memory..." << std::endl;
 }
 
+void write_buffer_memory()
+{
+  void* buf_data;
+  // Map buffer memory
+  {
+    std::cout << "Mapping buffer memory..." << std::endl;
+    std::lock_guard<std::mutex> lock(memory_mutex[RESOURCE_BUFFER]);
+    res = vkMapMemory(device,
+		      memory[RESOURCE_BUFFER],
+		      0,
+		      VK_WHOLE_SIZE,
+		      0,
+		      &buf_data);
+    if (res == VK_SUCCESS)
+      std::cout << "Buffer memory mapped successfully!" << std::endl;
+    else
+      std::cout << "Failed to map buffer memory..." << std::endl;
+  }
+
+  char* str = new char[mem_size[RESOURCE_BUFFER]];
+  unsigned int k = 0;
+  for (unsigned int i = 0; i != BUFFER_COUNT; i++) {
+    for (unsigned int j = 0; j != buf_mem_requirements[i].size; j++) {
+      int off = rand() % 26;
+      unsigned char c = 'A' + off;
+      str[k++] = c;
+    }
+  }
+  str[mem_size[RESOURCE_BUFFER]-1] = '\0';
+  memcpy(buf_data, str, mem_size[RESOURCE_BUFFER]);
+  delete[](str);
+
+  // Unmap buffer memory
+  {
+    std::lock_guard<std::mutex> lock(memory_mutex[RESOURCE_BUFFER]);
+    std::cout << "Unmapping buffer memory..." << std::endl;
+    vkUnmapMemory(device,
+		  memory[RESOURCE_BUFFER]);
+  }
+}
+
+void write_image_memory()
+{
+  void* img_data = nullptr;
+  // Map image memory
+  {
+    std::cout << "Mapping image memory..." << std::endl;
+    std::lock_guard<std::mutex> lock(memory_mutex[RESOURCE_IMAGE]);
+    res = vkMapMemory(device,
+		      memory[RESOURCE_IMAGE],
+		      0,
+		      VK_WHOLE_SIZE,
+		      0,
+		      &img_data);
+    if (res == VK_SUCCESS)
+      std::cout << "Image memory mapped successfully!" << std::endl;
+    else
+      std::cout << "Failed to map image memory..." << std::endl;
+  }
+
+  // TODO: Write data to image memory
+
+  // Unmap image memory
+  {
+    std::lock_guard<std::mutex> lock(memory_mutex[RESOURCE_IMAGE]);
+    std::cout << "Unmapping image memory..." << std::endl;
+    vkUnmapMemory(device,
+		  memory[RESOURCE_IMAGE]);
+  }
+}
+
 int main(int argc, const char* argv[])
 {
   if (SHOW_INSTANCE_LAYERS) {
@@ -560,73 +631,10 @@ int main(int argc, const char* argv[])
 	      << std::endl;
 
   allocate_buffer_memory();
-
   allocate_image_memory();
-  
-  void* img_data = nullptr;
-  // Map image memory
-  {
-    std::cout << "Mapping image memory..." << std::endl;
-    std::lock_guard<std::mutex> lock(memory_mutex[RESOURCE_IMAGE]);
-    res = vkMapMemory(device,
-		      memory[RESOURCE_IMAGE],
-		      0,
-		      VK_WHOLE_SIZE,
-		      0,
-		      &img_data);
-    if (res == VK_SUCCESS)
-      std::cout << "Image memory mapped successfully!" << std::endl;
-    else
-      std::cout << "Failed to map image memory..." << std::endl;
-  }
 
-  // TODO: Write data to image memory
-
-  // Unmap image memory
-  {
-    std::lock_guard<std::mutex> lock(memory_mutex[RESOURCE_IMAGE]);
-    std::cout << "Unmapping image memory..." << std::endl;
-    vkUnmapMemory(device,
-		  memory[RESOURCE_IMAGE]);
-  }
-  
-  void* buf_data;
-  // Map buffer memory
-  {
-    std::cout << "Mapping buffer memory..." << std::endl;
-    std::lock_guard<std::mutex> lock(memory_mutex[RESOURCE_BUFFER]);
-    res = vkMapMemory(device,
-		      memory[RESOURCE_BUFFER],
-		      0,
-		      VK_WHOLE_SIZE,
-		      0,
-		      &buf_data);
-    if (res == VK_SUCCESS)
-      std::cout << "Buffer memory mapped successfully!" << std::endl;
-    else
-      std::cout << "Failed to map buffer memory..." << std::endl;
-  }
-
-  char* str = new char[mem_size[RESOURCE_BUFFER]];
-  unsigned int k = 0;
-  for (unsigned int i = 0; i != BUFFER_COUNT; i++) {
-    for (unsigned int j = 0; j != buf_mem_requirements[i].size; j++) {
-      int off = rand() % 26;
-      unsigned char c = 'A' + off;
-      str[k++] = c;
-    }
-  }
-  str[mem_size[RESOURCE_BUFFER]-1] = '\0';
-  memcpy(buf_data, str, mem_size[RESOURCE_BUFFER]);
-  delete[](str);
-
-  // Unmap buffer memory
-  {
-    std::lock_guard<std::mutex> lock(memory_mutex[RESOURCE_BUFFER]);
-    std::cout << "Unmapping buffer memory..." << std::endl;
-    vkUnmapMemory(device,
-		  memory[RESOURCE_BUFFER]);
-  }
+  write_buffer_memory();
+  write_image_memory();
 
   // Bind buffer memory
   {
