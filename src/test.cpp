@@ -672,6 +672,80 @@ void allocate_command_buffers()
     std::cout << "Failed to allocate command buffers..." << std::endl;
 }
 
+void begin_recording()
+{
+  VkCommandBufferBeginInfo cmd_buf_begin_info = {};
+  cmd_buf_begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+  cmd_buf_begin_info.pNext = nullptr;
+  cmd_buf_begin_info.flags = 0;
+  cmd_buf_begin_info.pInheritanceInfo = nullptr;
+  std::cout << "Beginning command buffers (" << COMMAND_BUFFER_COUNT
+	    << ")..." << std::endl;
+  std::lock_guard<std::mutex> lock(command_pool_mutex);
+  std::vector<std::unique_lock<std::mutex>> locks;
+  for (auto& mut : command_buffer_mutex)
+    locks.emplace_back(mut, std::defer_lock);
+  for (unsigned int i = 0; i != COMMAND_BUFFER_COUNT; i++) {
+    locks[i].lock();
+    res = vkBeginCommandBuffer(command_buffers[i],
+			       &cmd_buf_begin_info);
+    if (res == VK_SUCCESS)
+      std::cout << "Command buffer " << i << " is now recording."
+		<< std::endl;
+    else
+      std::cout << "Failed to begin command buffer " << i << "..."
+		<< std::endl;      
+    locks[i].unlock();
+  }
+}
+
+void record_copy_buffer_commands()
+{
+  std::lock_guard<std::mutex> lock(command_pool_mutex);
+  std::vector<std::unique_lock<std::mutex>> locks;
+  for (auto& mut : command_buffer_mutex)
+    locks.emplace_back(mut, std::defer_lock);
+  for (unsigned int i = 0; i != COMMAND_BUFFER_COUNT; i++) {
+    std::cout << "Adding vkCmdCopyBuffer from buffer " << 2*i
+	      << " to buffer " << 2*i+1 << " to command buffer " << i
+	      << "..." << std::endl;
+    locks[i].lock();
+    VkBuffer src_buf = buffers[2*i];
+    VkBuffer dst_buf = buffers[2*i+1];
+    std::vector<VkBufferCopy> copies(1);
+    copies[0].srcOffset = 0;
+    copies[0].dstOffset = 0;
+    copies[0].size = 128;
+    vkCmdCopyBuffer(command_buffers[i],
+		    src_buf,
+		    dst_buf,
+		    static_cast<uint32_t>(copies.size()),
+		    copies.data());
+    locks[i].unlock();
+  }
+}
+
+void end_recording()
+{
+  std::cout << "Ending command buffers (" << COMMAND_BUFFER_COUNT
+	    << ")..." << std::endl;
+  std::lock_guard<std::mutex> lock(command_pool_mutex);
+  std::vector<std::unique_lock<std::mutex>> locks;
+  for (auto& mut : command_buffer_mutex)
+    locks.emplace_back(mut, std::defer_lock);
+  for (unsigned int i = 0; i != COMMAND_BUFFER_COUNT; i++) {
+    locks[i].lock();
+    res = vkEndCommandBuffer(command_buffers[i]);
+    if (res == VK_SUCCESS)
+      std::cout << "Command buffer " << i << " is no longer recording."
+		<< std::endl;
+    else
+      std::cout << "Failed to end command buffer " << i << "..."
+		<< std::endl;      
+    locks[i].unlock();
+  }
+}
+
 int main(int argc, const char* argv[])
 {
   if (SHOW_INSTANCE_LAYERS) {
@@ -824,79 +898,9 @@ int main(int argc, const char* argv[])
 
   allocate_command_buffers();
 
-  VkCommandBufferBeginInfo cmd_buf_begin_info = {};
-  cmd_buf_begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-  cmd_buf_begin_info.pNext = nullptr;
-  cmd_buf_begin_info.flags = 0;
-  cmd_buf_begin_info.pInheritanceInfo = nullptr;
-  // Begin recording
-  {
-    std::cout << "Beginning command buffers (" << COMMAND_BUFFER_COUNT
-	      << ")..." << std::endl;
-    std::lock_guard<std::mutex> lock(command_pool_mutex);
-    std::vector<std::unique_lock<std::mutex>> locks;
-    for (auto& mut : command_buffer_mutex)
-      locks.emplace_back(mut, std::defer_lock);
-    for (unsigned int i = 0; i != COMMAND_BUFFER_COUNT; i++) {
-      locks[i].lock();
-      res = vkBeginCommandBuffer(command_buffers[i],
-				 &cmd_buf_begin_info);
-      if (res == VK_SUCCESS)
-	std::cout << "Command buffer " << i << " is now recording."
-		  << std::endl;
-      else
-	std::cout << "Failed to begin command buffer " << i << "..."
-		  << std::endl;      
-      locks[i].unlock();
-    }
-  }
-
-  // Add commands
-  {
-    std::lock_guard<std::mutex> lock(command_pool_mutex);
-    std::vector<std::unique_lock<std::mutex>> locks;
-    for (auto& mut : command_buffer_mutex)
-      locks.emplace_back(mut, std::defer_lock);
-    for (unsigned int i = 0; i != COMMAND_BUFFER_COUNT; i++) {
-      std::cout << "Adding vkCmdCopyBuffer from buffer " << 2*i
-		<< " to buffer " << 2*i+1 << " to command buffer " << i
-		<< "..." << std::endl;
-      locks[i].lock();
-      VkBuffer src_buf = buffers[2*i];
-      VkBuffer dst_buf = buffers[2*i+1];
-      std::vector<VkBufferCopy> copies(1);
-      copies[0].srcOffset = 0;
-      copies[0].dstOffset = 0;
-      copies[0].size = 128;
-      vkCmdCopyBuffer(command_buffers[i],
-		      src_buf,
-		      dst_buf,
-		      static_cast<uint32_t>(copies.size()),
-		      copies.data());
-      locks[i].unlock();
-    }
-  }
-
-  // End recording
-  {
-    std::cout << "Ending command buffers (" << COMMAND_BUFFER_COUNT
-	      << ")..." << std::endl;
-    std::lock_guard<std::mutex> lock(command_pool_mutex);
-    std::vector<std::unique_lock<std::mutex>> locks;
-    for (auto& mut : command_buffer_mutex)
-      locks.emplace_back(mut, std::defer_lock);
-    for (unsigned int i = 0; i != COMMAND_BUFFER_COUNT; i++) {
-      locks[i].lock();
-      res = vkEndCommandBuffer(command_buffers[i]);
-      if (res == VK_SUCCESS)
-	std::cout << "Command buffer " << i << " is no longer recording."
-		  << std::endl;
-      else
-	std::cout << "Failed to end command buffer " << i << "..."
-		  << std::endl;      
-      locks[i].unlock();
-    }
-  }
+  begin_recording();
+  record_copy_buffer_commands();
+  end_recording();
 
   std::cout << "Before submit:" << std::endl;
   std::cout << "Buffer 0 (offset=" << READ_OFFSET << ", len="
