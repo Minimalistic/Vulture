@@ -41,8 +41,9 @@ std::mutex instance_mutex;
 std::vector<std::mutex> resource_mutex[2] =
   {std::vector<std::mutex>(BUFFER_COUNT),
    std::vector<std::mutex>(IMAGE_COUNT)};
-std::vector<std::mutex> buffer_view_mutex(BUFFER_COUNT);
-std::vector<std::mutex> image_view_mutex(IMAGE_COUNT);
+std::vector<std::mutex> view_mutex[2] =
+  {std::vector<std::mutex>(BUFFER_COUNT),
+   std::vector<std::mutex>(IMAGE_COUNT)};
 std::mutex memory_mutex[2];
 std::mutex command_pool_mutex;
 std::vector<std::mutex> command_buffer_mutex(COMMAND_BUFFER_COUNT);
@@ -1020,7 +1021,7 @@ int main(int argc, const char* argv[])
   // Destroy buffer views
   {
     std::vector<std::unique_lock<std::mutex>> locks;
-    for (auto& mut : buffer_view_mutex)
+    for (auto& mut : view_mutex[RESOURCE_BUFFER])
       locks.emplace_back(mut, std::defer_lock);
     for (unsigned int i = 0; i != BUFFER_COUNT; i++) {
       std::cout << "Destroying buffer view " << i << "..." << std::endl;
@@ -1035,7 +1036,7 @@ int main(int argc, const char* argv[])
   // Destroy image views
   {
     std::vector<std::unique_lock<std::mutex>> locks;
-    for (auto& mut : image_view_mutex)
+    for (auto& mut : view_mutex[RESOURCE_IMAGE])
       locks.emplace_back(mut, std::defer_lock);
     for (unsigned i = 0; i != IMAGE_COUNT; i++) {
       locks[i].lock();
