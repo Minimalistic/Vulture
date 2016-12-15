@@ -746,6 +746,34 @@ void end_recording()
   }
 }
 
+void submit_to_queue(uint32_t queue_idx)
+{
+  std::vector<VkSubmitInfo> submit_infos(1);
+  submit_infos[0].sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+  submit_infos[0].pNext = nullptr;
+  submit_infos[0].waitSemaphoreCount = 0;
+  submit_infos[0].pWaitSemaphores = nullptr;
+  submit_infos[0].pWaitDstStageMask = nullptr;
+  submit_infos[0].commandBufferCount =
+    static_cast<uint32_t>(command_buffers.size());
+  submit_infos[0].pCommandBuffers = command_buffers.data();
+  submit_infos[0].signalSemaphoreCount = 0;
+  submit_infos[0].pSignalSemaphores = nullptr;
+  std::cout << "Submitting command buffers to queue "
+	    << queue_idx << "..." << std::endl;
+  std::lock_guard<std::mutex> lock(queue_mutex[queue_idx]);
+  res = vkQueueSubmit(queues[queue_idx],
+		      static_cast<uint32_t>(submit_infos.size()),
+		      submit_infos.data(),
+		      VK_NULL_HANDLE);
+  if (res == VK_SUCCESS)
+    std::cout << "Command buffers submitted to queue " << queue_idx
+	      << " successfully!" << std::endl;
+  else
+    std::cout << "Failed to submit command buffers to queue "
+	      << queue_idx << "..." << std::endl;
+}
+
 int main(int argc, const char* argv[])
 {
   if (SHOW_INSTANCE_LAYERS) {
@@ -918,34 +946,8 @@ int main(int argc, const char* argv[])
 	    READ_OFFSET + buf_mem_requirements[0].size,
 	    READ_LENGTH);
 
-  std::vector<VkSubmitInfo> submit_infos(1);
-  submit_infos[0].sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-  submit_infos[0].pNext = nullptr;
-  submit_infos[0].waitSemaphoreCount = 0;
-  submit_infos[0].pWaitSemaphores = nullptr;
-  submit_infos[0].pWaitDstStageMask = nullptr;
-  submit_infos[0].commandBufferCount =
-    static_cast<uint32_t>(command_buffers.size());
-  submit_infos[0].pCommandBuffers = command_buffers.data();
-  submit_infos[0].signalSemaphoreCount = 0;
-  submit_infos[0].pSignalSemaphores = nullptr;
   uint32_t submit_queue_idx = 0;
-  // Submit all command buffers to queue
-  {
-    std::cout << "Submitting command buffers to queue "
-	      << submit_queue_idx << "..." << std::endl;
-    std::lock_guard<std::mutex> lock(queue_mutex[submit_queue_idx]);
-    res = vkQueueSubmit(queues[submit_queue_idx],
-			static_cast<uint32_t>(submit_infos.size()),
-			submit_infos.data(),
-			VK_NULL_HANDLE);
-    if (res == VK_SUCCESS)
-      std::cout << "Command buffers submitted to queue " << submit_queue_idx
-		<< " successfully!" << std::endl;
-    else
-      std::cout << "Failed to submit command buffers to queue "
-		<< submit_queue_idx << "..." << std::endl;
-  }
+  submit_to_queue(submit_queue_idx);
 
   // Wait on queue to finish executing command buffers. Not recommended:
   // use fence instead.
