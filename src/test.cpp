@@ -38,9 +38,10 @@
 
 std::mutex device_mutex;
 std::mutex instance_mutex;
-std::vector<std::mutex> buffer_mutex(BUFFER_COUNT);
+std::vector<std::mutex> resource_mutex[2] =
+  {std::vector<std::mutex>(BUFFER_COUNT),
+   std::vector<std::mutex>(IMAGE_COUNT)};
 std::vector<std::mutex> buffer_view_mutex(BUFFER_COUNT);
-std::vector<std::mutex> image_mutex(IMAGE_COUNT);
 std::vector<std::mutex> image_view_mutex(IMAGE_COUNT);
 std::mutex memory_mutex[2];
 std::mutex command_pool_mutex;
@@ -492,7 +493,7 @@ void write_image_memory()
 void bind_buffer_memory()
 {
   std::vector<std::unique_lock<std::mutex>> locks;
-  for (auto& mut : buffer_mutex)
+  for (auto& mut : resource_mutex[RESOURCE_BUFFER])
     locks.emplace_back(mut, std::defer_lock);
   VkDeviceSize offset = 0;
   for (unsigned int i = 0; i != BUFFER_COUNT; i++) {
@@ -517,7 +518,7 @@ void bind_buffer_memory()
 void bind_image_memory()
 {
   std::vector<std::unique_lock<std::mutex>> locks;
-  for (auto& mut : image_mutex)
+  for (auto& mut : resource_mutex[RESOURCE_IMAGE])
     locks.emplace_back(mut, std::defer_lock);
   VkDeviceSize offset = 0;
   for (unsigned int i = 0; i != IMAGE_COUNT; i++) {
@@ -1067,7 +1068,7 @@ int main(int argc, const char* argv[])
   // Destroy buffers
   {
     std::vector<std::unique_lock<std::mutex>> locks;
-    for (auto& mut : buffer_mutex)
+    for (auto& mut : resource_mutex[RESOURCE_BUFFER])
       locks.emplace_back(mut, std::defer_lock);
     for (int i = 0; i != BUFFER_COUNT; i++) {
       locks[i].lock();
@@ -1082,7 +1083,7 @@ int main(int argc, const char* argv[])
   // Destroy images
   {
     std::vector<std::unique_lock<std::mutex>> locks;
-    for (auto& mut : image_mutex)
+    for (auto& mut : resource_mutex[RESOURCE_IMAGE])
       locks.emplace_back(mut, std::defer_lock);
     for (unsigned int i = 0; i != IMAGE_COUNT; i++) {
       locks[i].lock();
