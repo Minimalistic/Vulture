@@ -71,6 +71,7 @@ VkDeviceMemory memory[2];
 std::vector<VkBufferView> buffer_views;
 std::vector<VkImageView> image_views;
 std::vector<VkQueue> queues;
+VkCommandPool command_pool;
 
 void create_instance()
 {
@@ -626,6 +627,25 @@ void get_queues()
   }
 }
 
+void create_command_pool()
+{
+  std::cout << "Creating command pool..." << std::endl;
+  VkCommandPoolCreateInfo cmd_pool_create_info = {};
+  cmd_pool_create_info.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+  cmd_pool_create_info.pNext = nullptr;
+  cmd_pool_create_info.flags = VK_COMMAND_POOL_CREATE_TRANSIENT_BIT |
+    VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
+  cmd_pool_create_info.queueFamilyIndex = queue_family_idx;
+  res = vkCreateCommandPool(device,
+			    &cmd_pool_create_info,
+			    CUSTOM_ALLOCATOR ? &alloc_callbacks : nullptr,
+			    &command_pool);
+  if (res == VK_SUCCESS)
+    std::cout << "Command pool created successfully!" << std::endl;
+  else
+    std::cout << "Failed to create command pool..." << std::endl;
+}
+
 int main(int argc, const char* argv[])
 {
   if (SHOW_INSTANCE_LAYERS) {
@@ -774,22 +794,7 @@ int main(int argc, const char* argv[])
 
   get_queues();
   
-  VkCommandPool command_pool;
-  std::cout << "Creating command pool..." << std::endl;
-  VkCommandPoolCreateInfo cmd_pool_create_info = {};
-  cmd_pool_create_info.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
-  cmd_pool_create_info.pNext = nullptr;
-  cmd_pool_create_info.flags = VK_COMMAND_POOL_CREATE_TRANSIENT_BIT |
-    VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
-  cmd_pool_create_info.queueFamilyIndex = queue_family_idx;
-  res = vkCreateCommandPool(device,
-			    &cmd_pool_create_info,
-			    CUSTOM_ALLOCATOR ? &alloc_callbacks : nullptr,
-			    &command_pool);
-  if (res == VK_SUCCESS)
-    std::cout << "Command pool created successfully!" << std::endl;
-  else
-    std::cout << "Failed to create command pool..." << std::endl;
+  create_command_pool();
   
   // Allocate command buffers  
   std::vector<VkCommandBuffer> command_buffers;
