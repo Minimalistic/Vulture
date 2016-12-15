@@ -72,6 +72,7 @@ std::vector<VkBufferView> buffer_views;
 std::vector<VkImageView> image_views;
 std::vector<VkQueue> queues;
 VkCommandPool command_pool;
+std::vector<VkCommandBuffer> command_buffers;
 
 void create_instance()
 {
@@ -646,6 +647,29 @@ void create_command_pool()
     std::cout << "Failed to create command pool..." << std::endl;
 }
 
+void allocate_command_buffers()
+{
+  std::lock_guard<std::mutex> lock(command_pool_mutex);
+  VkCommandBufferAllocateInfo cmd_buf_alloc_info = {};
+  cmd_buf_alloc_info.sType =
+    VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+  cmd_buf_alloc_info.pNext = nullptr;
+  cmd_buf_alloc_info.commandPool = command_pool;
+  cmd_buf_alloc_info.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+  cmd_buf_alloc_info.commandBufferCount = COMMAND_BUFFER_COUNT;
+  command_buffers.resize(COMMAND_BUFFER_COUNT);
+  std::cout << "Allocating command buffers ("
+	    << COMMAND_BUFFER_COUNT << ")..."
+	    << std::endl;
+  res = vkAllocateCommandBuffers(device,
+				 &cmd_buf_alloc_info,
+				 command_buffers.data());
+  if (res == VK_SUCCESS)
+    std::cout << "Command buffers allocated successfully!" << std::endl;
+  else
+    std::cout << "Failed to allocate command buffers..." << std::endl;
+}
+
 int main(int argc, const char* argv[])
 {
   if (SHOW_INSTANCE_LAYERS) {
@@ -795,30 +819,8 @@ int main(int argc, const char* argv[])
   get_queues();
   
   create_command_pool();
-  
-  // Allocate command buffers  
-  std::vector<VkCommandBuffer> command_buffers;
-  {
-    std::lock_guard<std::mutex> lock(command_pool_mutex);
-    VkCommandBufferAllocateInfo cmd_buf_alloc_info = {};
-    cmd_buf_alloc_info.sType =
-      VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-    cmd_buf_alloc_info.pNext = nullptr;
-    cmd_buf_alloc_info.commandPool = command_pool;
-    cmd_buf_alloc_info.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-    cmd_buf_alloc_info.commandBufferCount = COMMAND_BUFFER_COUNT;
-    command_buffers.resize(COMMAND_BUFFER_COUNT);
-    std::cout << "Allocating command buffers ("
-	      << COMMAND_BUFFER_COUNT << ")..."
-	      << std::endl;
-    res = vkAllocateCommandBuffers(device,
-				   &cmd_buf_alloc_info,
-				   command_buffers.data());
-    if (res == VK_SUCCESS)
-      std::cout << "Command buffers allocated successfully!" << std::endl;
-    else
-      std::cout << "Failed to allocate command buffers..." << std::endl;
-  }
+
+  allocate_command_buffers();
 
   VkCommandBufferBeginInfo cmd_buf_begin_info = {};
   cmd_buf_begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
