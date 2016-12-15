@@ -774,6 +774,19 @@ void submit_to_queue(uint32_t queue_idx)
 	      << queue_idx << "..." << std::endl;
 }
 
+void wait_for_queue(uint32_t queue_idx)
+{
+  std::cout << "Waiting for queue " << queue_idx
+	    << " to idle..." << std::endl;
+  res = vkQueueWaitIdle(queues[queue_idx]);
+  if (res == VK_SUCCESS)
+    std::cout << "Queue " << queue_idx << " idled successfully!"
+	      << std::endl;
+  else
+    std::cout << "Failed to wait for queue " << queue_idx
+	      << "...";
+}
+
 int main(int argc, const char* argv[])
 {
   if (SHOW_INSTANCE_LAYERS) {
@@ -948,20 +961,7 @@ int main(int argc, const char* argv[])
 
   uint32_t submit_queue_idx = 0;
   submit_to_queue(submit_queue_idx);
-
-  // Wait on queue to finish executing command buffers. Not recommended:
-  // use fence instead.
-  {
-    std::cout << "Waiting for queue " << submit_queue_idx
-	      << " to idle..." << std::endl;
-    res = vkQueueWaitIdle(queues[submit_queue_idx]);
-    if (res == VK_SUCCESS)
-      std::cout << "Queue " << submit_queue_idx << " idled successfully!"
-		<< std::endl;
-    else
-      std::cout << "Failed to wait for queue " << submit_queue_idx
-		<< "...";
-  }
+  wait_for_queue(submit_queue_idx);
 
   std::cout << "After submit:" << std::endl;
   std::cout << "Buffer 0 (offset=" << READ_OFFSET << ", len="
