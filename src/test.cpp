@@ -823,6 +823,123 @@ void free_command_buffers()
     lck.unlock();
 }
 
+void destroy_command_pool()
+{
+  std::lock_guard<std::mutex> lock(command_pool_mutex);
+  std::cout << "Destroying command pool..." << std::endl;
+  vkDestroyCommandPool(device,
+		       command_pool,
+		       CUSTOM_ALLOCATOR ? &alloc_callbacks : nullptr);
+}
+
+void destroy_buffer_views()
+{
+  std::vector<std::unique_lock<std::mutex>> locks;
+  for (auto& mut : view_mutex[RESOURCE_BUFFER])
+    locks.emplace_back(mut, std::defer_lock);
+  for (unsigned i = 0; i != BUFFER_COUNT; i++) {
+    locks[i].lock();
+    std::cout << "Destroying buffer view " << i << "..." << std::endl;
+    vkDestroyBufferView(device,
+			buffer_views[i],
+			CUSTOM_ALLOCATOR ? &alloc_callbacks : nullptr);
+    locks[i].unlock();
+  }
+}
+
+void destroy_image_views()
+{
+  std::vector<std::unique_lock<std::mutex>> locks;
+  for (auto& mut : view_mutex[RESOURCE_IMAGE])
+    locks.emplace_back(mut, std::defer_lock);
+  for (unsigned i = 0; i != IMAGE_COUNT; i++) {
+    locks[i].lock();
+    std::cout << "Destroying image view " << i << "..." << std::endl;
+    vkDestroyImageView(device,
+		       image_views[i],
+		       CUSTOM_ALLOCATOR ? &alloc_callbacks : nullptr);
+    locks[i].unlock();
+  }
+}
+
+void free_buffer_memory()
+{
+  std::lock_guard<std::mutex> lock(memory_mutex[RESOURCE_BUFFER]);
+  std::cout << "Freeing buffer memory..." << std::endl;
+  vkFreeMemory(device,
+	       memory[RESOURCE_BUFFER],
+	       CUSTOM_ALLOCATOR ? &alloc_callbacks : nullptr);
+}
+
+void free_image_memory()
+{
+  std::lock_guard<std::mutex> lock(memory_mutex[RESOURCE_IMAGE]);
+  std::cout << "Freeing image memory..." << std::endl;
+  vkFreeMemory(device,
+	       memory[RESOURCE_IMAGE],
+	       CUSTOM_ALLOCATOR ? &alloc_callbacks : nullptr);
+}
+
+void destroy_buffers()
+{
+  std::vector<std::unique_lock<std::mutex>> locks;
+  for (auto& mut : resource_mutex[RESOURCE_BUFFER])
+    locks.emplace_back(mut, std::defer_lock);
+  for (int i = 0; i != BUFFER_COUNT; i++) {
+    locks[i].lock();
+    std::cout << "Destroying buffer " << i << "..." << std::endl;
+    vkDestroyBuffer(device,
+		    buffers[i],
+		    CUSTOM_ALLOCATOR ? &alloc_callbacks : nullptr);
+    locks[i].unlock();
+  }
+}
+
+void destroy_images()
+{
+  std::vector<std::unique_lock<std::mutex>> locks;
+  for (auto& mut : resource_mutex[RESOURCE_IMAGE])
+    locks.emplace_back(mut, std::defer_lock);
+  for (unsigned int i = 0; i != IMAGE_COUNT; i++) {
+    locks[i].lock();
+    std::cout << "Destroying image " << i << "..." << std::endl;
+    vkDestroyImage(device,
+		   images[i],
+		   CUSTOM_ALLOCATOR ? &alloc_callbacks : nullptr);
+    locks[i].unlock();
+  }
+}
+
+void wait_for_device()
+{
+  std::cout << "Waiting for device to idle..." << std::endl;
+  res = vkDeviceWaitIdle(device);
+  if (res == VK_SUCCESS)
+    std::cout << "Device is idle..." << std::endl;
+  else if (res == VK_ERROR_OUT_OF_HOST_MEMORY)
+    std::cout << "Wait failed: no available host memory..." << std::endl;
+  else if (res == VK_ERROR_OUT_OF_DEVICE_MEMORY)
+    std::cout << "Wait failed: no available device memory..." << std::endl;
+  else if (res == VK_ERROR_DEVICE_LOST)
+    std::cout << "Wait failed: device was lost..." << std::endl;
+}
+
+void destroy_device()
+{
+  std::lock_guard<std::mutex> lock(device_mutex);
+  std::cout << "Destroying device..." << std::endl;
+  vkDestroyDevice(device,
+		  CUSTOM_ALLOCATOR ? &alloc_callbacks : nullptr);
+}
+
+void destroy_instance()
+{
+  std::lock_guard<std::mutex> lock(instance_mutex);
+  std::cout << "Destroying instance..." << std::endl;
+  vkDestroyInstance(inst,
+		    CUSTOM_ALLOCATOR ? &alloc_callbacks : nullptr);
+}
+
 int main(int argc, const char* argv[])
 {
   if (SHOW_INSTANCE_LAYERS) {
@@ -1017,121 +1134,28 @@ int main(int argc, const char* argv[])
 
   reset_command_buffers();
 
+  // Cleanup  
   free_command_buffers();
-
-  // Destroy command pool
-  {
-    std::lock_guard<std::mutex> lock(command_pool_mutex);
-    std::cout << "Destroying command pool..." << std::endl;
-    vkDestroyCommandPool(device,
-			 command_pool,
-			 CUSTOM_ALLOCATOR ? &alloc_callbacks : nullptr);
-  }
-
-  // Destroy buffer views
-  {
-    std::vector<std::unique_lock<std::mutex>> locks;
-    for (auto& mut : view_mutex[RESOURCE_BUFFER])
-      locks.emplace_back(mut, std::defer_lock);
-    for (unsigned int i = 0; i != BUFFER_COUNT; i++) {
-      std::cout << "Destroying buffer view " << i << "..." << std::endl;
-      locks[i].lock();
-      vkDestroyBufferView(device,
-			  buffer_views[i],
-			  CUSTOM_ALLOCATOR ? &alloc_callbacks : nullptr);
-      locks[i].unlock();
-    }
-  }
-
-  // Destroy image views
-  {
-    std::vector<std::unique_lock<std::mutex>> locks;
-    for (auto& mut : view_mutex[RESOURCE_IMAGE])
-      locks.emplace_back(mut, std::defer_lock);
-    for (unsigned i = 0; i != IMAGE_COUNT; i++) {
-      locks[i].lock();
-      std::cout << "Destroying image view " << i << "..." << std::endl;
-      vkDestroyImageView(device,
-			 image_views[i],
-			 CUSTOM_ALLOCATOR ? &alloc_callbacks : nullptr);
-      locks[i].unlock();
-    }
-  }
-
-  // Free buffer memory
-  {
-    std::lock_guard<std::mutex> lock(memory_mutex[RESOURCE_BUFFER]);
-    std::cout << "Freeing buffer memory..." << std::endl;
-    vkFreeMemory(device,
-		 memory[RESOURCE_BUFFER],
-		 CUSTOM_ALLOCATOR ? &alloc_callbacks : nullptr);
-  }
-
-  // Free image memory
-  {
-    std::lock_guard<std::mutex> lock(memory_mutex[RESOURCE_IMAGE]);
-    std::cout << "Freeing image memory..." << std::endl;
-    vkFreeMemory(device,
-		 memory[RESOURCE_IMAGE],
-		 CUSTOM_ALLOCATOR ? &alloc_callbacks : nullptr);
-  }
   
-  // Destroy buffers
-  {
-    std::vector<std::unique_lock<std::mutex>> locks;
-    for (auto& mut : resource_mutex[RESOURCE_BUFFER])
-      locks.emplace_back(mut, std::defer_lock);
-    for (int i = 0; i != BUFFER_COUNT; i++) {
-      locks[i].lock();
-      std::cout << "Destroying buffer " << i << "..." << std::endl;
-      vkDestroyBuffer(device,
-		      buffers[i],
-		      CUSTOM_ALLOCATOR ? &alloc_callbacks : nullptr);
-      locks[i].unlock();
-    }
-  }
+  destroy_command_pool();
+  
+  destroy_buffer_views();
+  
+  destroy_image_views();
+  
+  free_buffer_memory();
 
-  // Destroy images
-  {
-    std::vector<std::unique_lock<std::mutex>> locks;
-    for (auto& mut : resource_mutex[RESOURCE_IMAGE])
-      locks.emplace_back(mut, std::defer_lock);
-    for (unsigned int i = 0; i != IMAGE_COUNT; i++) {
-      locks[i].lock();
-      std::cout << "Destroying image " << i << "..." << std::endl;
-      vkDestroyImage(device,
-		     images[i],
-		     CUSTOM_ALLOCATOR ? &alloc_callbacks : nullptr);
-      locks[i].unlock();
-    }
-  }
+  free_image_memory();
 
-  std::cout << "Waiting for device to idle..." << std::endl;
-  res = vkDeviceWaitIdle(device);
-  if (res == VK_SUCCESS)
-    std::cout << "Device is idle..." << std::endl;
-  else if (res == VK_ERROR_OUT_OF_HOST_MEMORY)
-    std::cout << "Wait failed: no available host memory..." << std::endl;
-  else if (res == VK_ERROR_OUT_OF_DEVICE_MEMORY)
-    std::cout << "Wait failed: no available device memory..." << std::endl;
-  else if (res == VK_ERROR_DEVICE_LOST)
-    std::cout << "Wait failed: device was lost..." << std::endl;
+  destroy_buffers();
 
-  // Synchronize access to device while destroying it
-  {
-    std::lock_guard<std::mutex> lock(device_mutex);
-    std::cout << "Destroying device..." << std::endl;
-    vkDestroyDevice(device,
-		    CUSTOM_ALLOCATOR ? &alloc_callbacks : nullptr);
-  }
+  destroy_images();
 
-  // Synchronize instance while destroying it
-  {
-    std::lock_guard<std::mutex> lock(instance_mutex);
-    std::cout << "Destroying instance..." << std::endl;
-    vkDestroyInstance(inst,
-		      CUSTOM_ALLOCATOR ? &alloc_callbacks : nullptr);
-  }
+  wait_for_device();
 
+  destroy_device();
+  
+  destroy_instance();
+  
   return 0;
 }
