@@ -787,6 +787,42 @@ void wait_for_queue(uint32_t queue_idx)
 	      << "...";
 }
 
+void reset_command_buffers()
+{
+  std::vector<std::unique_lock<std::mutex>> locks;
+  for (auto& mut : command_buffer_mutex)
+    locks.emplace_back(mut, std::defer_lock);
+  for (unsigned int i = 0; i != COMMAND_BUFFER_COUNT; i++) {
+    std::cout << "Resetting command buffer " << i << "..." << std::endl;
+    locks[i].lock();
+    res = vkResetCommandBuffer(command_buffers[i], 0);
+    if (res == VK_SUCCESS)
+      std::cout << "Command buffer " << i << " reset successfully!"
+		<< std::endl;
+    else
+      std::cout << "Failed to reset command buffer " << i << "..."
+		<< std::endl;
+    locks[i].unlock();
+  }
+}
+
+void free_command_buffers()
+{
+  std::lock_guard<std::mutex> lock(command_pool_mutex);
+  std::vector<std::unique_lock<std::mutex>> locks;
+  for (auto& mut : command_buffer_mutex)
+    locks.emplace_back(mut, std::defer_lock);
+  for (auto& lck : locks)
+    lck.lock();
+  std::cout << "Freeing command buffers..." << std::endl;
+  vkFreeCommandBuffers(device,
+		       command_pool,
+		       COMMAND_BUFFER_COUNT,
+		       command_buffers.data());
+  for (auto& lck : locks)
+    lck.unlock();
+}
+
 int main(int argc, const char* argv[])
 {
   if (SHOW_INSTANCE_LAYERS) {
@@ -979,42 +1015,10 @@ int main(int argc, const char* argv[])
 	    READ_OFFSET + buf_mem_requirements[0].size,
 	    READ_LENGTH);
 
-  // Reset command buffers
-  {
-    std::vector<std::unique_lock<std::mutex>> locks;
-    for (auto& mut : command_buffer_mutex)
-      locks.emplace_back(mut, std::defer_lock);
-    for (unsigned int i = 0; i != COMMAND_BUFFER_COUNT; i++) {
-      std::cout << "Resetting command buffer " << i << "..." << std::endl;
-      locks[i].lock();
-      res = vkResetCommandBuffer(command_buffers[i], 0);
-      if (res == VK_SUCCESS)
-	std::cout << "Command buffer " << i << " reset successfully!"
-		  << std::endl;
-      else
-	std::cout << "Failed to reset command buffer " << i << "..."
-		  << std::endl;
-      locks[i].unlock();
-    }
-  }
+  reset_command_buffers();
 
-  // Free command buffers
-  {
-    std::lock_guard<std::mutex> lock(command_pool_mutex);
-    std::vector<std::unique_lock<std::mutex>> locks;
-    for (auto& mut : command_buffer_mutex)
-      locks.emplace_back(mut, std::defer_lock);
-    for (auto& lck : locks)
-      lck.lock();
-    std::cout << "Freeing command buffers..." << std::endl;
-    vkFreeCommandBuffers(device,
-			 command_pool,
-			 COMMAND_BUFFER_COUNT,
-			 command_buffers.data());
-    for (auto& lck : locks)
-      lck.unlock();
-  }
-  
+  free_command_buffers();
+
   // Destroy command pool
   {
     std::lock_guard<std::mutex> lock(command_pool_mutex);
