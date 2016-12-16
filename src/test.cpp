@@ -725,6 +725,33 @@ void record_copy_buffer_commands()
   }
 }
 
+void record_fill_buffer_commands()
+{
+  std::lock_guard<std::mutex> lock(command_pool_mutex);
+  std::vector<std::unique_lock<std::mutex>> locks;
+  for (auto& mut : command_buffer_mutex)
+    locks.emplace_back(mut, std::defer_lock);
+  uint32_t data = make_data("ABCD");
+  if (data == VT_BAD_DATA) {
+    std::cout << "Failed record_fill_buffer_commands(): bad data"
+	      << std::endl;
+    return;
+  }
+  
+  for (unsigned int i = 0; i != COMMAND_BUFFER_COUNT; i++) {
+    std::cout << "Adding vkCmdFillBuffer to buffer "
+	      << i << " to command buffer " << i
+	      << "..." << std::endl;
+    locks[i].lock();
+    vkCmdFillBuffer(command_buffers[i],
+		    buffers[i],
+		    0,
+		    64,
+		    data);
+    locks[i].unlock();
+  }
+}
+
 void end_recording()
 {
   std::cout << "Ending command buffers (" << COMMAND_BUFFER_COUNT
@@ -1130,6 +1157,33 @@ int main(int argc, const char* argv[])
 	    memory[RESOURCE_BUFFER],
 	    memory_mutex[RESOURCE_BUFFER],
 	    READ_OFFSET + buf_mem_requirements[0].size,
+	    READ_LENGTH);
+
+  reset_command_buffers();
+
+  begin_recording();
+  record_fill_buffer_commands();
+  end_recording();
+
+  std::cout << "Before submit:" << std::endl;
+  std::cout << "Buffer 0 (offset=" << READ_OFFSET << ", len="
+	    << READ_LENGTH << "): ";
+  print_mem(device,
+	    memory[RESOURCE_BUFFER],
+	    memory_mutex[RESOURCE_BUFFER],
+	    READ_OFFSET,
+	    READ_LENGTH);
+
+  submit_to_queue(submit_queue_idx);
+  wait_for_queue(submit_queue_idx);
+
+  std::cout << "After submit:" << std::endl;
+  std::cout << "Buffer 0 (offset=" << READ_OFFSET << ", len="
+	    << READ_LENGTH << "): ";
+  print_mem(device,
+	    memory[RESOURCE_BUFFER],
+	    memory_mutex[RESOURCE_BUFFER],
+	    READ_OFFSET,
 	    READ_LENGTH);
 
   reset_command_buffers();

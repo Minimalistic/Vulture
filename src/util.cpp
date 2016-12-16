@@ -1,6 +1,7 @@
 #include "util.hpp"
 
 #include <iostream>
+#include <cstring>
 
 bool supports_mem_reqs(unsigned int memory_type_idx,
 		       const std::vector<VkMemoryRequirements>& mem_reqs) {
@@ -31,4 +32,16 @@ void print_mem(VkDevice device,
   str[size] = '\0';
   std::cout << str << std::endl;
   vkUnmapMemory(device, memory);
+}
+
+uint32_t make_data(const char* str)
+{
+  if (strlen(str) != 4) {
+    std::cout << "Failed make_data(const char*): string must be size 4!" << std::endl;
+    return VT_BAD_DATA;
+  }
+  return (str[3] << 3*BYTE_SIZE)
+    + (str[2] << 2*BYTE_SIZE)
+    + (str[1] << BYTE_SIZE)
+    + str[0];
 }
