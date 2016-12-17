@@ -752,6 +752,64 @@ void record_fill_buffer_commands()
   }
 }
 
+void record_image_memory_pipeline_barrier_command(uint32_t cmd_buf_idx,
+						  uint32_t img_idx)
+{
+  std::lock_guard<std::mutex> pool_lock(command_pool_mutex);
+  std::lock_guard<std::mutex> buf_lock(command_buffer_mutex[cmd_buf_idx]);
+  std::cout << "Adding vkCmdPipelineBarrier to command buffer "
+	    << cmd_buf_idx << " for image " << img_idx << std::endl;
+  VkImageMemoryBarrier barrier;
+  barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+  barrier.pNext = nullptr;
+  barrier.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+  barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+  barrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+  barrier.newLayout = VK_IMAGE_LAYOUT_GENERAL;
+  barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+  barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+  barrier.image = images[img_idx];
+  VkImageSubresourceRange subresource_range;
+  subresource_range.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+  subresource_range.baseMipLevel = 0;
+  subresource_range.levelCount = VK_REMAINING_MIP_LEVELS;
+  subresource_range.baseArrayLayer = 0;
+  subresource_range.layerCount = VK_REMAINING_ARRAY_LAYERS;
+  barrier.subresourceRange = subresource_range;
+  std::vector<VkImageMemoryBarrier> barriers = {barrier};
+  vkCmdPipelineBarrier(command_buffers[cmd_buf_idx],
+		       VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
+		       VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
+		       0,
+		       0, nullptr,
+		       0, nullptr,
+		       static_cast<uint32_t>(barriers.size()), barriers.data());
+}
+
+void record_clear_color_image_command(uint32_t cmd_buf_idx,
+				      uint32_t img_idx)
+{
+  std::lock_guard<std::mutex> pool_lock(command_pool_mutex);
+  std::lock_guard<std::mutex> buf_lock(command_buffer_mutex[cmd_buf_idx]);
+  std::cout << "Adding vkCmdClearColorImage to command buffer "
+	    << cmd_buf_idx << " for image " << img_idx
+	    << std::endl;
+  VkClearColorValue blue_color = {0.0, 0.0, 1.0, 1.0};
+  VkImageSubresourceRange subresource_range;
+  subresource_range.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+  subresource_range.baseMipLevel = 0;
+  subresource_range.levelCount = VK_REMAINING_MIP_LEVELS;
+  subresource_range.baseArrayLayer = 0;
+  subresource_range.layerCount = VK_REMAINING_ARRAY_LAYERS;
+  std::vector<VkImageSubresourceRange> ranges = {subresource_range};
+  vkCmdClearColorImage(command_buffers[cmd_buf_idx],
+		       images[img_idx],
+		       VK_IMAGE_LAYOUT_GENERAL,
+		       &blue_color,
+		       static_cast<uint32_t>(ranges.size()),
+		       ranges.data());
+}
+
 void end_recording()
 {
   std::cout << "Ending command buffers (" << COMMAND_BUFFER_COUNT
@@ -1185,6 +1243,19 @@ int main(int argc, const char* argv[])
 	    memory_mutex[RESOURCE_BUFFER],
 	    READ_OFFSET,
 	    READ_LENGTH);
+
+  reset_command_buffers();
+
+  uint32_t cmd_buf_idx = 0;
+  uint32_t img_idx = 0;
+  begin_recording();
+  record_image_memory_pipeline_barrier_command(cmd_buf_idx,
+					       img_idx);
+  record_clear_color_image_command(cmd_buf_idx, img_idx);
+  end_recording();
+
+  submit_to_queue(submit_queue_idx);
+  wait_for_queue(submit_queue_idx);
 
   reset_command_buffers();
 
