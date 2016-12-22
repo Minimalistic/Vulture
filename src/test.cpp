@@ -5,6 +5,8 @@
 
 #if defined(WIN32) || defined(_WIN32) || defined(__WIN32) && !defined(__CYGWIN__)
 #define VK_USE_PLATFORM_WIN32_KHR
+#include <windows.h>
+#include <tchar.h>
 #else
 #define VK_USE_PLATFORM_XLIB_KHR
 #endif
@@ -41,6 +43,9 @@
 
 #define HOST_COHERENT(X) ((X & VK_MEMORY_PROPERTY_HOST_COHERENT_BIT) != 0)
 #define HOST_VISIBLE(X)  ((X & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) != 0)
+
+#define WINDOW_WIDTH 800
+#define WINDOW_HEIGHT 600
 
 std::mutex device_mutex;
 std::mutex instance_mutex;
@@ -81,6 +86,7 @@ std::vector<VkImageView> image_views;
 std::vector<VkQueue> queues;
 VkCommandPool command_pool;
 std::vector<VkCommandBuffer> command_buffers;
+VkSurfaceKHR surface;
 
 void create_instance()
 {
@@ -710,6 +716,42 @@ void allocate_command_buffers()
     std::cout << "Failed to allocate command buffers..." << std::endl;
 }
 
+void create_surface()
+{
+  std::cout << "Creating surface..." << std::endl;
+#if defined(WIN32) || defined(_WIN32) || defined(__WIN32) && !defined(__CYGWIN__)
+  TCHAR szWindowClass[] = _T("win32app");  
+  TCHAR szTitle[] = _T("VultureApp"); 
+  HINSTANCE hInst = GetModuleHandle(NULL);
+  HWND hWnd = CreateWindow(  
+    szWindowClass,  
+    szTitle,  
+    WS_OVERLAPPEDWINDOW,  
+    CW_USEDEFAULT, CW_USEDEFAULT,  
+    WINDOW_WIDTH, WINDOW_HEIGHT,
+    NULL,  
+    NULL,  
+    hInst,  
+    NULL);
+  
+  VkWin32SurfaceCreateInfoKHR create_info = {};
+  create_info.sType = VK_STRUCTURE_TYPE_DISPLAY_SURFACE_CREATE_INFO_KHR;
+  create_info.pNext = nullptr;
+  create_info.flags = 0;
+  create_info.hinstance = hInst;
+  create_info.hwnd = hWnd;
+  res = vkCreateWin32SurfaceKHR(inst,
+				&create_info,
+				CUSTOM_ALLOCATOR ? &alloc_callbacks : nullptr,
+				&surface);
+#else
+#endif
+  if (res == VK_SUCCESS)
+    std::cout << "Surface created successfully!" << std::endl;
+  else
+    std::cout << "Failed to create surface..." << std::endl;
+}
+
 void begin_recording()
 {
   VkCommandBufferBeginInfo cmd_buf_begin_info = {};
@@ -1156,6 +1198,8 @@ int main(int argc, const char* argv[])
   create_command_pool();
 
   allocate_command_buffers();
+
+  create_surface();
 
   begin_recording();
   record_copy_buffer_commands();
