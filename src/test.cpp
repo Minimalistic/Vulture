@@ -7,8 +7,13 @@
 #define VK_USE_PLATFORM_WIN32_KHR
 #include <windows.h>
 #include <tchar.h>
+HINSTANCE hInst;
+HWND hWnd;
 #else
 #define VK_USE_PLATFORM_XLIB_KHR
+#include <X11/Xlib.h>
+Display* display;
+Window window;
 #endif
 
 #include <vulkan/vulkan.h>
@@ -87,6 +92,33 @@ std::vector<VkQueue> queues;
 VkCommandPool command_pool;
 std::vector<VkCommandBuffer> command_buffers;
 VkSurfaceKHR surface;
+
+void create_window()
+{
+  #if defined(WIN32) || defined(_WIN32) || defined(__WIN32) && !defined(__CYGWIN__)
+  hInst = GetModuleHandle(NULL);
+  hWnd = CreateWindow(  
+    szWindowClass,  
+    szTitle,  
+    WS_OVERLAPPEDWINDOW,  
+    CW_USEDEFAULT, CW_USEDEFAULT,  
+    WINDOW_WIDTH, WINDOW_HEIGHT,
+    NULL,  
+    NULL,  
+    hInst,  
+    NULL);
+#else
+  display = XOpenDisplay(NULL);
+  int screen = DefaultScreen(display);  
+  window = XCreateSimpleWindow(display,
+			       RootWindow(display, screen),
+			       10, 10,
+			       100, 100,
+			       1,
+			       BlackPixel(display, screen),
+			       WhitePixel(display, screen));
+#endif
+}
 
 void create_instance()
 {
@@ -217,10 +249,8 @@ void get_queue_family_properties()
       supports =
 	vkGetPhysicalDeviceWin32PresentationSupportKHR(physical_devices[phys_device_idx], static_cast<uint32_t>(i));
     #else
-      Display* display = XOpenDisplay(NULL);
-      int default_screen = 0;
-      supports = vkGetPhysicalDeviceXlibPresentationSupportKHR(physical_devices[phys_device_idx], static_cast<uint32_t>(i), display, XVisualIDFromVisual(DefaultVisual(display, default_screen)));
-      XCloseDisplay(display);
+      int screen = DefaultScreen(display);
+      supports = vkGetPhysicalDeviceXlibPresentationSupportKHR(physical_devices[phys_device_idx], static_cast<uint32_t>(i), display, XVisualIDFromVisual(DefaultVisual(display, screen)));
     #endif
       
       if (supports == VK_TRUE)
@@ -719,20 +749,10 @@ void allocate_command_buffers()
 void create_surface()
 {
   std::cout << "Creating surface..." << std::endl;
+  
 #if defined(WIN32) || defined(_WIN32) || defined(__WIN32) && !defined(__CYGWIN__)
   TCHAR szWindowClass[] = _T("win32app");  
   TCHAR szTitle[] = _T("VultureApp"); 
-  HINSTANCE hInst = GetModuleHandle(NULL);
-  HWND hWnd = CreateWindow(  
-    szWindowClass,  
-    szTitle,  
-    WS_OVERLAPPEDWINDOW,  
-    CW_USEDEFAULT, CW_USEDEFAULT,  
-    WINDOW_WIDTH, WINDOW_HEIGHT,
-    NULL,  
-    NULL,  
-    hInst,  
-    NULL);
   
   VkWin32SurfaceCreateInfoKHR create_info = {};
   create_info.sType = VK_STRUCTURE_TYPE_DISPLAY_SURFACE_CREATE_INFO_KHR;
@@ -745,7 +765,19 @@ void create_surface()
 				CUSTOM_ALLOCATOR ? &alloc_callbacks : nullptr,
 				&surface);
 #else
+  VkXlibSurfaceCreateInfoKHR create_info = {};
+  create_info.sType = VK_STRUCTURE_TYPE_XLIB_SURFACE_CREATE_INFO_KHR;
+  create_info.pNext = nullptr;
+  create_info.flags = 0;
+  create_info.dpy = display;
+  create_info.window = window;
+  
+  res = vkCreateXlibSurfaceKHR(inst,
+			       &create_info,
+			       CUSTOM_ALLOCATOR ? &alloc_callbacks : nullptr,
+			       &surface);
 #endif
+  
   if (res == VK_SUCCESS)
     std::cout << "Surface created successfully!" << std::endl;
   else
@@ -1047,8 +1079,20 @@ void destroy_instance()
 		    CUSTOM_ALLOCATOR ? &alloc_callbacks : nullptr);
 }
 
+void destroy_window()
+{
+#if defined(WIN32) || defined(_WIN32) || defined(__WIN32) && !defined(__CYGWIN__)
+  DestroyWindow(hWnd);
+#else
+  XDestroyWindow(display, window);
+  XCloseDisplay(display);
+#endif 
+}
+
 int main(int argc, const char* argv[])
 {
+  create_window();
+  
   if (SHOW_INSTANCE_LAYERS) {
     uint32_t inst_layer_count;
     std::vector<VkLayerProperties> inst_layer_props;
@@ -1292,6 +1336,8 @@ int main(int argc, const char* argv[])
   destroy_device();
   
   destroy_instance();
-  
+
+  destroy_window();
+
   return 0;
 }
