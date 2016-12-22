@@ -100,8 +100,12 @@ void create_instance()
   inst_info.pApplicationInfo = &app_info;
   inst_info.enabledExtensionCount = 2;
   const char* enabled_extension_names[] = {
-    "VK_KHR_surface",
-    "VK_KHR_xlib_surface"
+#if defined(WIN32) || defined(_WIN32) || defined(__WIN32) && !defined(__CYGWIN__)
+    "VK_KHR_win32_surface",
+#else
+    "VK_KHR_xlib_surface",
+#endif
+    "VK_KHR_surface"
   };
   inst_info.ppEnabledExtensionNames = enabled_extension_names;
   if (ENABLE_STANDARD_VALIDATION) {
@@ -205,21 +209,21 @@ void get_queue_family_properties()
       
     #if defined(WIN32) || defined(_WIN32) || defined(__WIN32) && !defined(__CYGWIN__)
       supports =
-	vkGetPhysicalDeviceWin32PresentationSupportKHR(physical_devices[phys_device_idx], i);
+	vkGetPhysicalDeviceWin32PresentationSupportKHR(physical_devices[phys_device_idx], static_cast<uint32_t>(i));
     #else
       Display* display = XOpenDisplay(NULL);
       int default_screen = 0;
-      supports = vkGetPhysicalDeviceXlibPresentationSupportKHR(physical_devices[phys_device_idx], 0, display, XVisualIDFromVisual(DefaultVisual(display, default_screen)));
+      supports = vkGetPhysicalDeviceXlibPresentationSupportKHR(physical_devices[phys_device_idx], static_cast<uint32_t>(i), display, XVisualIDFromVisual(DefaultVisual(display, default_screen)));
       XCloseDisplay(display);
     #endif
       
       if (supports == VK_TRUE)
-	queue_family_idx = i;
+	queue_family_idx = static_cast<uint32_t>(i);
     }
   }
 
   if (queue_family_idx != UINT32_MAX)
-    std::cout << "Found supported queue family: " << queue_family_idx
+    std::cout << "Found surface supported queue family: " << queue_family_idx
 	      << std::endl;
   else
     std::cout << "Failed to find supported queue family..." << std::endl;
