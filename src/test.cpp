@@ -3,6 +3,12 @@
 #include <mutex>
 #include <cstring>
 
+#if defined(WIN32) || defined(_WIN32) || defined(__WIN32) && !defined(__CYGWIN__)
+#define VK_USE_PLATFORM_WIN32_KHR
+#else
+#define VK_USE_PLATFORM_LIB_XCB_KHR
+#endif
+
 #include <vulkan/vulkan.h>
 
 #include "allocator.hpp"
