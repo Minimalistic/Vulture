@@ -6,7 +6,7 @@
 #if defined(WIN32) || defined(_WIN32) || defined(__WIN32) && !defined(__CYGWIN__)
 #define VK_USE_PLATFORM_WIN32_KHR
 #else
-#define VK_USE_PLATFORM_LIB_XCB_KHR
+#define VK_USE_PLATFORM_XLIB_KHR
 #endif
 
 #include <vulkan/vulkan.h>
@@ -58,7 +58,7 @@ std::vector<std::mutex> queue_mutex(MAX_QUEUES);
 allocator my_alloc = {};
 
 uint32_t phys_device_idx = 0;
-uint32_t queue_family_idx = 0;
+uint32_t queue_family_idx;
 uint32_t queue_family_queue_count;
 uint32_t mem_types[2] = {UINT32_MAX, UINT32_MAX};
 
@@ -98,8 +98,12 @@ void create_instance()
   inst_info.pNext = nullptr;
   inst_info.flags = 0;
   inst_info.pApplicationInfo = &app_info;
-  inst_info.enabledExtensionCount = 0;
-  inst_info.ppEnabledExtensionNames = nullptr;
+  inst_info.enabledExtensionCount = 2;
+  const char* enabled_extension_names[] = {
+    "VK_KHR_surface",
+    "VK_KHR_xlib_surface"
+  };
+  inst_info.ppEnabledExtensionNames = enabled_extension_names;
   if (ENABLE_STANDARD_VALIDATION) {
     std::cout << "Enabling LunarG standard validation instance layer..." 
 	      << std::endl;
@@ -190,11 +194,35 @@ void get_queue_family_properties()
 					   &queue_family_property_count,
 					   queue_family_properties.data());
 
-  using queue_fam_idx = std::vector<VkQueueFamilyProperties>::size_type;
+  using idx = std::vector<VkQueueFamilyProperties>::size_type;
+  queue_family_idx = UINT32_MAX;
   std::cout << "Family\tQueues" << std::endl;
-  for (queue_fam_idx i = 0; i < queue_family_properties.size(); i++)
+  for (idx i = 0; i < queue_family_properties.size(); i++) {
     std::cout << i << "\t" << queue_family_properties[i].queueCount 
 	      << std::endl;
+    if (queue_family_idx == UINT32_MAX) {
+      VkBool32 supports;
+      
+    #if defined(WIN32) || defined(_WIN32) || defined(__WIN32) && !defined(__CYGWIN__)
+      supports =
+	vkGetPhysicalDeviceWin32PresentationSupportKHR(physical_devices[phys_device_idx], i);
+    #else
+      Display* display = XOpenDisplay(NULL);
+      int default_screen = 0;
+      supports = vkGetPhysicalDeviceXlibPresentationSupportKHR(physical_devices[phys_device_idx], 0, display, XVisualIDFromVisual(DefaultVisual(display, default_screen)));
+      XCloseDisplay(display);
+    #endif
+      
+      if (supports == VK_TRUE)
+	queue_family_idx = i;
+    }
+  }
+
+  if (queue_family_idx != UINT32_MAX)
+    std::cout << "Found supported queue family: " << queue_family_idx
+	      << std::endl;
+  else
+    std::cout << "Failed to find supported queue family..." << std::endl;
 }
 
 void create_device()

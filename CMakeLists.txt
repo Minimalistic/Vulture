@@ -23,14 +23,16 @@ target_link_libraries(Vulture Allocator)
 # Include Vulkan headers
 include_directories("$ENV{VULKAN_SDK}/include")
 
+# Link threading libraries
+find_package(Threads REQUIRED)
+target_link_libraries(Vulture ${CMAKE_THREAD_LIBS_INIT})
+
 IF(WIN32)
 
 # Link Vulkan
 find_library(Vulkan_LIBRARY NAMES vulkan-1 HINTS "$ENV{VULKAN_SDK}/Bin" REQUIRED)
 target_link_libraries(Vulture ${Vulkan_LIBRARY})
 
-# Link Win32 threads
-find_package(Threads REQUIRED)
 
 ELSE(WIN32)
 
@@ -38,7 +40,9 @@ ELSE(WIN32)
 find_library(Vulkan_LIBRARY NAMES vulkan HINTS "$ENV{VULKAN_SDK}/lib" REQUIRED)
 target_link_libraries(Vulture ${Vulkan_LIBRARY})
 
-# Link Pthreads
-find_package(Threads REQUIRED)
+# Link Xlib
+find_package(X11 REQUIRED)
+target_link_libraries(Vulture ${X11_LIBRARIES})
+include_directories(${X11_INCLUDE_DIR})
 
 ENDIF(WIN32)
