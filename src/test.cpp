@@ -96,6 +96,8 @@ VkSurfaceKHR surface;
 void create_window()
 {
   #if defined(WIN32) || defined(_WIN32) || defined(__WIN32) && !defined(__CYGWIN__)
+  TCHAR szWindowClass[] = _T("win32app");  
+  TCHAR szTitle[] = _T("VultureApp"); 
   hInst = GetModuleHandle(NULL);
   hWnd = CreateWindow(  
     szWindowClass,  
@@ -751,9 +753,6 @@ void create_surface()
   std::cout << "Creating surface..." << std::endl;
   
 #if defined(WIN32) || defined(_WIN32) || defined(__WIN32) && !defined(__CYGWIN__)
-  TCHAR szWindowClass[] = _T("win32app");  
-  TCHAR szTitle[] = _T("VultureApp"); 
-  
   VkWin32SurfaceCreateInfoKHR create_info = {};
   create_info.sType = VK_STRUCTURE_TYPE_DISPLAY_SURFACE_CREATE_INFO_KHR;
   create_info.pNext = nullptr;
