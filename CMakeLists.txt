@@ -6,6 +6,9 @@ project (Vulture)
 set (Vulture_VERSION_MAJOR 1)
 set (Vulture_VERSION_MINOR 0)
 
+# Include custom modules
+set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/cmake")
+
 # Enable C++11 support
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")
 
@@ -29,20 +32,23 @@ target_link_libraries(Vulture ${CMAKE_THREAD_LIBS_INIT})
 
 IF(WIN32)
 
-# Link Vulkan
-find_library(Vulkan_LIBRARY NAMES vulkan-1 HINTS "$ENV{VULKAN_SDK}/Bin" REQUIRED)
-target_link_libraries(Vulture ${Vulkan_LIBRARY})
-
+  # Link Vulkan
+  find_library(Vulkan_LIBRARY NAMES vulkan-1 HINTS "$ENV{VULKAN_SDK}/Bin" REQUIRED)
+  target_link_libraries(Vulture ${Vulkan_LIBRARY})
 
 ELSE(WIN32)
 
-# Link Vulkan
-find_library(Vulkan_LIBRARY NAMES vulkan HINTS "$ENV{VULKAN_SDK}/lib" REQUIRED)
-target_link_libraries(Vulture ${Vulkan_LIBRARY})
+  # Link Vulkan
+  find_library(Vulkan_LIBRARY NAMES vulkan HINTS "$ENV{VULKAN_SDK}/lib" REQUIRED)
+  target_link_libraries(Vulture ${Vulkan_LIBRARY})
 
-# Link Xlib
-find_package(X11 REQUIRED)
-target_link_libraries(Vulture ${X11_LIBRARIES})
-include_directories(${X11_INCLUDE_DIR})
+  # Link Xlib
+  find_package(X11 REQUIRED)
+  target_link_libraries(Vulture ${X11_LIBRARIES})
+  include_directories(${X11_INCLUDE_DIR})
+
+  # Link XCB
+  find_package(XCB REQUIRED)
+  target_link_libraries(Vulture ${XCB_LIBRARIES})
 
 ENDIF(WIN32)

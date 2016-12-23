@@ -4,3 +4,6 @@ Vulkan coding tips:
 
 1) Enabling the standard validation layer is a great way to uncover bugs in
    your code.
+
+2) On Ubuntu you can access the validation layers in your program by installing
+   'libvulkan1' via apt-get.

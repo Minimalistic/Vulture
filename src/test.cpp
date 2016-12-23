@@ -3,12 +3,20 @@
 #include <mutex>
 #include <cstring>
 
+#define USE_XCB false
+
 #if defined(WIN32) || defined(_WIN32) || defined(__WIN32) && !defined(__CYGWIN__)
 #define VK_USE_PLATFORM_WIN32_KHR
 #include <windows.h>
 #include <tchar.h>
 HINSTANCE hInst;
 HWND hWnd;
+#elif USE_XCB
+#define VK_USE_PLATFORM_XCB_KHR
+#include <xcb/xcb.h>
+xcb_connection_t* connection;
+xcb_window_t  window;
+xcb_screen_t* screen;
 #else
 #define VK_USE_PLATFORM_XLIB_KHR
 #include <X11/Xlib.h>
@@ -64,6 +72,7 @@ std::mutex memory_mutex[2];
 std::mutex command_pool_mutex;
 std::vector<std::mutex> command_buffer_mutex(COMMAND_BUFFER_COUNT);
 std::vector<std::mutex> queue_mutex(MAX_QUEUES);
+std::mutex surface_mutex;
 
 allocator my_alloc = {};
 
@@ -109,6 +118,23 @@ void create_window()
     NULL,  
     hInst,  
     NULL);
+#elif USE_XCB
+  connection = xcb_connect(NULL, NULL);
+  const xcb_setup_t*    setup = xcb_get_setup(connection);
+  xcb_screen_iterator_t iter  = xcb_setup_roots_iterator(setup);
+  screen = iter.data;
+
+  window = xcb_generate_id(connection);
+  xcb_create_window(connection,
+		    XCB_COPY_FROM_PARENT,
+		    window,
+		    screen->root,
+		    0, 0,
+		    150, 150,
+		    10,
+		    XCB_WINDOW_CLASS_INPUT_OUTPUT,
+		    screen->root_visual,
+		    0, NULL);
 #else
   display = XOpenDisplay(NULL);
   int screen = DefaultScreen(display);  
@@ -142,6 +168,8 @@ void create_instance()
   const char* enabled_extension_names[] = {
 #if defined(WIN32) || defined(_WIN32) || defined(__WIN32) && !defined(__CYGWIN__)
     "VK_KHR_win32_surface",
+#elif USE_XCB
+    "VK_KHR_xcb_surface",
 #else
     "VK_KHR_xlib_surface",
 #endif
@@ -247,13 +275,15 @@ void get_queue_family_properties()
     if (queue_family_idx == UINT32_MAX) {
       VkBool32 supports;
       
-    #if defined(WIN32) || defined(_WIN32) || defined(__WIN32) && !defined(__CYGWIN__)
+#if defined(WIN32) || defined(_WIN32) || defined(__WIN32) && !defined(__CYGWIN__)
       supports =
 	vkGetPhysicalDeviceWin32PresentationSupportKHR(physical_devices[phys_device_idx], static_cast<uint32_t>(i));
-    #else
+#elif USE_XCB
+      supports = vkGetPhysicalDeviceXcbPresentationSupportKHR(physical_devices[phys_device_idx], static_cast<uint32_t>(i), connection, screen->root_visual);
+#else
       int screen = DefaultScreen(display);
       supports = vkGetPhysicalDeviceXlibPresentationSupportKHR(physical_devices[phys_device_idx], static_cast<uint32_t>(i), display, XVisualIDFromVisual(DefaultVisual(display, screen)));
-    #endif
+#endif
       
       if (supports == VK_TRUE)
 	queue_family_idx = static_cast<uint32_t>(i);
@@ -750,7 +780,16 @@ void allocate_command_buffers()
 
 void create_surface()
 {
-  std::cout << "Creating surface..." << std::endl;
+  std::string surface_name;
+#if defined(WIN32) || defined(_WIN32) || defined(__WIN32) && !defined(__CYGWIN__)
+  surface_name = "Win32";
+#elif USE_XCB
+  surface_name = "XCB";
+#else
+  surface_name = "Xlib";
+#endif
+  
+  std::cout << "Creating " << surface_name << " surface..." << std::endl;
   
 #if defined(WIN32) || defined(_WIN32) || defined(__WIN32) && !defined(__CYGWIN__)
   VkWin32SurfaceCreateInfoKHR create_info = {};
@@ -763,6 +802,18 @@ void create_surface()
 				&create_info,
 				CUSTOM_ALLOCATOR ? &alloc_callbacks : nullptr,
 				&surface);
+#elif USE_XCB
+  VkXcbSurfaceCreateInfoKHR create_info = {};
+  create_info.sType = VK_STRUCTURE_TYPE_XCB_SURFACE_CREATE_INFO_KHR;
+  create_info.pNext = nullptr;
+  create_info.flags = 0;
+  create_info.connection = connection;
+  create_info.window = window;
+
+  res = vkCreateXcbSurfaceKHR(inst,
+			      &create_info,
+			      CUSTOM_ALLOCATOR ? &alloc_callbacks : nullptr,
+			      &surface);
 #else
   VkXlibSurfaceCreateInfoKHR create_info = {};
   create_info.sType = VK_STRUCTURE_TYPE_XLIB_SURFACE_CREATE_INFO_KHR;
@@ -944,6 +995,15 @@ void reset_command_buffers()
   }
 }
 
+void destroy_surface()
+{
+  std::cout << "Destroying surface..." << std::endl;
+  std::lock_guard<std::mutex> lock(surface_mutex);
+  vkDestroySurfaceKHR(inst,
+		      surface,
+		      CUSTOM_ALLOCATOR ? &alloc_callbacks : nullptr);
+}
+
 void free_command_buffers()
 {
   std::lock_guard<std::mutex> lock(command_pool_mutex);
@@ -1082,6 +1142,9 @@ void destroy_window()
 {
 #if defined(WIN32) || defined(_WIN32) || defined(__WIN32) && !defined(__CYGWIN__)
   DestroyWindow(hWnd);
+#elif USE_XCB
+  xcb_destroy_window(connection, window);
+  xcb_disconnect(connection);
 #else
   XDestroyWindow(display, window);
   XCloseDisplay(display);
@@ -1313,7 +1376,9 @@ int main(int argc, const char* argv[])
 
   reset_command_buffers();
 
-  // Cleanup  
+  // Cleanup
+  destroy_surface();
+  
   free_command_buffers();
   
   destroy_command_pool();
