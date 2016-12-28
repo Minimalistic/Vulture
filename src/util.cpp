@@ -3,8 +3,29 @@
 #include <iostream>
 #include <cstring>
 
+bool supported_surface_present_mode(VkPresentModeKHR mode,
+				    const std::vector<VkPresentModeKHR>& modes)
+{
+  for (auto& md : modes)
+    if (md == mode)
+      return true;
+
+  return false;
+}
+
+bool supported_surface_format(VkFormat format,
+			      const std::vector<VkSurfaceFormatKHR>& surf_fmts)
+{
+  for (auto& fmt : surf_fmts)
+    if (fmt.format == format)
+      return true;
+  
+  return false;
+}
+
 bool supports_mem_reqs(unsigned int memory_type_idx,
-		       const std::vector<VkMemoryRequirements>& mem_reqs) {
+		       const std::vector<VkMemoryRequirements>& mem_reqs)
+{
   unsigned long mem_type_bit = 1 << memory_type_idx;
   for (auto& mem_requirement : mem_reqs)
     if ((mem_requirement.memoryTypeBits & mem_type_bit) == 0)
@@ -16,7 +37,8 @@ void print_mem(VkDevice device,
 	       VkDeviceMemory memory,
 	       std::mutex& mem_mutex,
 	       VkDeviceSize offset,
-	       VkDeviceSize size) {
+	       VkDeviceSize size)
+{
   std::lock_guard<std::mutex> lock(mem_mutex);
   void* data;
   VkResult res = vkMapMemory(device,

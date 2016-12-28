@@ -10,6 +10,12 @@
 
 #define BYTE_SIZE    8
 
+bool supported_surface_present_mode(VkPresentModeKHR mode,
+				    const std::vector<VkPresentModeKHR>& modes);
+
+bool supported_surface_format(VkFormat format,
+			      const std::vector<VkSurfaceFormatKHR>& surf_fmts);
+
 void print_mem(VkDevice device, VkDeviceMemory memory,
 	       std::mutex& mutex, VkDeviceSize offset,
 	       VkDeviceSize size);

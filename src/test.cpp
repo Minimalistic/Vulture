@@ -61,6 +61,10 @@ Window window;
 #define WINDOW_WIDTH 800
 #define WINDOW_HEIGHT 600
 
+#define SWAPCHAIN_IMAGE_FORMAT      VK_FORMAT_B8G8R8A8_UNORM
+#define SWAPCHAIN_PRESENT_MODE      VK_PRESENT_MODE_IMMEDIATE_KHR
+#define SWAPCHAIN_MIN_IMAGE_COUNT   3
+
 std::mutex device_mutex;
 std::mutex instance_mutex;
 std::vector<std::mutex> resource_mutex[2] =
@@ -74,6 +78,7 @@ std::mutex command_pool_mutex;
 std::vector<std::mutex> command_buffer_mutex(COMMAND_BUFFER_COUNT);
 std::vector<std::mutex> queue_mutex(MAX_QUEUES);
 std::mutex surface_mutex;
+std::mutex swapchain_mutex;
 
 allocator my_alloc = {};
 
@@ -102,6 +107,11 @@ std::vector<VkQueue> queues;
 VkCommandPool command_pool;
 std::vector<VkCommandBuffer> command_buffers;
 VkSurfaceKHR surface;
+VkSurfaceCapabilitiesKHR surface_capabilities;
+std::vector<VkSurfaceFormatKHR> surface_formats;
+std::vector<VkPresentModeKHR> surface_present_modes;
+VkSwapchainKHR swapchain;
+std::vector<VkImage> swapchain_images;
 
 void create_window()
 {
@@ -146,6 +156,7 @@ void create_window()
 			       1,
 			       BlackPixel(display, screen),
 			       WhitePixel(display, screen));
+  XSync(display, false);
 #endif
 }
 
@@ -323,8 +334,11 @@ void create_device()
   device_create_info.pQueueCreateInfos = device_queue_create_infos;
   device_create_info.enabledLayerCount = 0;
   device_create_info.ppEnabledLayerNames = nullptr;
-  device_create_info.enabledExtensionCount = 0;
-  device_create_info.ppEnabledExtensionNames = nullptr;
+  device_create_info.enabledExtensionCount = 1;
+  const char* enabled_extension_names[] = {
+    "VK_KHR_swapchain"
+  };
+  device_create_info.ppEnabledExtensionNames = enabled_extension_names;
   device_create_info.pEnabledFeatures = &supported_features;
 
   std::cout << "Creating device..." << std::endl;
@@ -835,6 +849,176 @@ void create_surface()
     std::cout << "Failed to create surface..." << std::endl;
 }
 
+void get_surface_capabilities()
+{
+  std::cout << "Fetching surface capabilities..." << std::endl;
+  res = vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physical_devices[phys_device_idx], surface, &surface_capabilities);
+  if (res == VK_SUCCESS)
+    std::cout << "Fetched surface capabilities successfully!" << std::endl;
+  else
+    std::cout << "Failed to fetch surface capabilities..." << std::endl;
+}
+
+void get_surface_formats()
+{
+  uint32_t num_formats;
+  std::cout << "Getting number of supported surface formats..." << std::endl;
+  res = vkGetPhysicalDeviceSurfaceFormatsKHR(physical_devices[phys_device_idx],
+					     surface,
+					     &num_formats,
+					     nullptr);
+  if (res == VK_SUCCESS) {
+    std::cout << "Getting supported surface formats..." << std::endl;
+    surface_formats.resize(num_formats);
+    res = vkGetPhysicalDeviceSurfaceFormatsKHR(physical_devices[phys_device_idx], surface, &num_formats, surface_formats.data());
+    if (res == VK_SUCCESS)
+      std::cout << "Got supported surface formats successfully!" << std::endl;
+    else
+      std::cout << "Failed to get supported surface formats..." << std::endl;
+  } else
+    std::cout << "Failed to get number of supported surface formats..."
+	      << std::endl;
+}
+
+void get_surface_present_modes()
+{
+  uint32_t num_modes;
+  std::cout << "Getting number of surface present modes..." << std::endl;
+  res = vkGetPhysicalDeviceSurfacePresentModesKHR(physical_devices[phys_device_idx], surface, &num_modes, nullptr);
+  if (res == VK_SUCCESS) {
+    std::cout << "Getting surface present modes..." << std::endl;
+    surface_present_modes.resize(num_modes);
+    res = vkGetPhysicalDeviceSurfacePresentModesKHR(physical_devices[phys_device_idx], surface, &num_modes, surface_present_modes.data());
+    if (res == VK_SUCCESS)
+      std::cout << "Got surface present modes successfully!" << std::endl;
+    else
+      std::cout << "Failed to get surface present modes..." << std::endl;
+  } else
+    std::cout << "Failed to get number of surface present modes..."
+	      << std::endl;
+}
+
+void check_queue_family_supports_presentation()
+{
+  std::cout << "Checking if queue family " << queue_family_idx
+	    << " supports surface presentation..." << std::endl;
+  VkBool32 supported;
+  res = vkGetPhysicalDeviceSurfaceSupportKHR(physical_devices[phys_device_idx],
+					     queue_family_idx,
+					     surface,
+					     &supported);
+  if (res == VK_SUCCESS)
+    if (supported == VK_TRUE)
+      std::cout << "Queue family " << queue_family_idx
+		<< " supports surface presentation!" << std::endl;
+    else
+      std::cout << "Queue family " << queue_family_idx
+		<< " does not support surface presentation..." << std::endl;
+  else
+    std::cout << "Failed to check if queue family " << queue_family_idx
+	      << " supports surface presentation..." << std::endl;    
+}
+
+void create_swapchain()
+{
+  std::lock_guard<std::mutex> surface_lock(surface_mutex);
+  std::lock_guard<std::mutex> swapchain_lock(swapchain_mutex);
+
+  if (!supported_surface_format(SWAPCHAIN_IMAGE_FORMAT,
+				surface_formats)) {
+    std::cout << "Failed to create swapchain: unsupported image format..."
+	      << std::endl;
+    std::cout << "Supported formats: ";
+    for (auto& fmt : surface_formats)
+      std::cout << fmt.format << " ";
+    std::cout << std::endl;
+    return;
+  }
+
+  if (!supported_surface_present_mode(SWAPCHAIN_PRESENT_MODE,
+				      surface_present_modes)) {
+    std::cout << "Failed to create swapchain: unsupported present mode..."
+	      << std::endl;
+    std::cout << "Supported modes: ";
+    for (auto& mode : surface_present_modes)
+      std::cout << mode << " ";
+    std::cout << std::endl;
+    return;
+  }
+
+  uint32_t min_images = surface_capabilities.minImageCount;
+  uint32_t max_images = surface_capabilities.maxImageCount;
+  if (SWAPCHAIN_MIN_IMAGE_COUNT < min_images
+      || SWAPCHAIN_MIN_IMAGE_COUNT > max_images) {
+    std::cout << "Failed to create swapchain: "
+	      << "minimum image count: " << SWAPCHAIN_MIN_IMAGE_COUNT
+	      << " is outside of allowed range [" << min_images << ", "
+	      << max_images << "]" << std::endl;
+    return;
+  }
+  
+  VkSwapchainCreateInfoKHR create_info = {};
+  create_info.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
+  create_info.pNext = nullptr;
+  create_info.flags = 0;
+  create_info.surface = surface;
+  create_info.minImageCount = SWAPCHAIN_MIN_IMAGE_COUNT;
+  create_info.imageFormat = SWAPCHAIN_IMAGE_FORMAT;
+  create_info.imageColorSpace = VK_COLORSPACE_SRGB_NONLINEAR_KHR;
+  VkExtent2D img_dimensions = {};
+  img_dimensions.width = surface_capabilities.currentExtent.width;
+  img_dimensions.height = surface_capabilities.currentExtent.height;
+  create_info.imageExtent = img_dimensions;
+  create_info.imageArrayLayers = 1;
+  create_info.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+  create_info.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
+  create_info.queueFamilyIndexCount = 0;
+  create_info.pQueueFamilyIndices = nullptr;
+  create_info.preTransform = VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR;
+  create_info.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
+  create_info.presentMode = SWAPCHAIN_PRESENT_MODE;
+  create_info.clipped = VK_TRUE;
+  create_info.oldSwapchain = swapchain;
+
+  std::cout << "Creating swapchain..." << std::endl;
+  res = vkCreateSwapchainKHR(device,
+			     &create_info,
+			     CUSTOM_ALLOCATOR ? &alloc_callbacks : nullptr,
+			     &swapchain);
+  if (res == VK_SUCCESS)
+    std::cout << "Swapchain created successfully!" << std::endl;    
+    else
+    std::cout << "Failed to create swapchain..." << std::endl;
+}
+
+void get_swapchain_images()
+{
+  uint32_t swapchain_img_count;
+  std::cout << "Getting number of images in swapchain..." << std::endl;
+  res = vkGetSwapchainImagesKHR(device,
+				swapchain,
+				&swapchain_img_count,
+				nullptr);
+  if (res == VK_SUCCESS) {
+    std::cout << "Getting " << swapchain_img_count
+	      << " swapchain image"
+	      << (swapchain_img_count != 1 ? "s" : "") << "..." << std::endl;
+    swapchain_images.resize(swapchain_img_count);
+    res = vkGetSwapchainImagesKHR(device,
+				  swapchain,
+				  &swapchain_img_count,
+				  swapchain_images.data());
+    if (res == VK_SUCCESS)
+      std::cout << "Got "
+		<< swapchain_img_count << " swapchain image"
+		<< (swapchain_img_count != 1 ? "s" : "") << "!"
+		<< std::endl;
+    else
+      std::cout << "Failed to get swapchain images..." << std::endl;
+  } else
+    std::cout << "Failed to get swapchain image count..." << std::endl;
+}
+
 void begin_recording()
 {
   VkCommandBufferBeginInfo cmd_buf_begin_info = {};
@@ -994,6 +1178,15 @@ void reset_command_buffers()
 		<< std::endl;
     locks[i].unlock();
   }
+}
+
+void destroy_swapchain()
+{
+  std::lock_guard<std::mutex> lock(swapchain_mutex);
+  std::cout << "Destroying swapchain..." << std::endl;
+  vkDestroySwapchainKHR(device,
+			swapchain,
+			CUSTOM_ALLOCATOR ? &alloc_callbacks : nullptr);
 }
 
 void destroy_surface()
@@ -1308,6 +1501,14 @@ int main(int argc, const char* argv[])
 
   create_surface();
 
+  get_surface_capabilities();
+  get_surface_formats();
+  get_surface_present_modes();
+  check_queue_family_supports_presentation();
+  
+  create_swapchain();  
+  get_swapchain_images();
+
   begin_recording();
   record_copy_buffer_commands();
   end_recording();
@@ -1378,6 +1579,8 @@ int main(int argc, const char* argv[])
   reset_command_buffers();
 
   // Cleanup
+  destroy_swapchain();
+  
   destroy_surface();
   
   free_command_buffers();
