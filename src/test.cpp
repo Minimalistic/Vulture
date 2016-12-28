@@ -185,6 +185,7 @@ void create_window()
 		    XCB_WINDOW_CLASS_INPUT_OUTPUT,
 		    screen->root_visual,
 		    0, NULL);
+  xcb_flush(connection);
 #else
   display = XOpenDisplay(NULL);
   int screen = DefaultScreen(display);  
