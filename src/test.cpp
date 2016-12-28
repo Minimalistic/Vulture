@@ -3,6 +3,7 @@
 #include <mutex>
 #include <cstring>
 #include <string>
+#include <fstream>
 
 #define USE_XCB false
 
@@ -61,9 +62,15 @@ Window window;
 #define WINDOW_WIDTH 800
 #define WINDOW_HEIGHT 600
 
+#if defined(WIN32) || defined(_WIN32) || defined(__WIN32) && !defined(__CYGWIN__)
+#define SWAPCHAIN_IMAGE_FORMAT      VK_FORMAT_B8G8R8A8_UNORM
+#define SWAPCHAIN_PRESENT_MODE      VK_PRESENT_MODE_MAILBOX_KHR
+#define SWAPCHAIN_MIN_IMAGE_COUNT   3
+#else
 #define SWAPCHAIN_IMAGE_FORMAT      VK_FORMAT_B8G8R8A8_UNORM
 #define SWAPCHAIN_PRESENT_MODE      VK_PRESENT_MODE_IMMEDIATE_KHR
 #define SWAPCHAIN_MIN_IMAGE_COUNT   3
+#endif
 
 std::mutex device_mutex;
 std::mutex instance_mutex;
@@ -113,13 +120,39 @@ std::vector<VkPresentModeKHR> surface_present_modes;
 VkSwapchainKHR swapchain;
 std::vector<VkImage> swapchain_images;
 
-void create_window()
+const std::string logfile = "vulture.log";
+
+#if defined(WIN32) || defined(_WIN32) || defined(__WIN32) && !defined(__CYGWIN__)
+LRESULT CALLBACK WndProc(HWND hwnd,
+			 UINT uMsg,
+			 WPARAM wParam,
+			 LPARAM lParam)
 {
-  #if defined(WIN32) || defined(_WIN32) || defined(__WIN32) && !defined(__CYGWIN__)
+  return DefWindowProc(hwnd,uMsg,wParam,lParam);
+}
+#endif
+
+void create_window()
+{  
+#if defined(WIN32) || defined(_WIN32) || defined(__WIN32) && !defined(__CYGWIN__)
   TCHAR szWindowClass[] = _T("win32app");  
-  TCHAR szTitle[] = _T("VultureApp"); 
+  TCHAR szTitle[] = _T("VultureApp");
+
   hInst = GetModuleHandle(NULL);
-  hWnd = CreateWindow(  
+  
+  WNDCLASS wndInfo = {};
+  wndInfo.lpfnWndProc = WndProc;
+  wndInfo.hInstance = hInst;
+  wndInfo.lpszClassName = szWindowClass;
+
+  if (!RegisterClass(&wndInfo)) {
+    std::cout << "Failed to create window: could not register Win32 class"
+	      << std::endl;
+    return;
+  }
+    
+  hWnd = CreateWindowEx(
+    0,
     szWindowClass,  
     szTitle,  
     WS_OVERLAPPEDWINDOW,  
@@ -129,6 +162,11 @@ void create_window()
     NULL,  
     hInst,  
     NULL);
+
+  if (!hWnd)
+    std::cout << "Failed to create window..." << std::endl;
+  else
+    std::cout << "Window created successfully!" << std::endl;
 #elif USE_XCB
   connection = xcb_connect(NULL, NULL);
   const xcb_setup_t*    setup = xcb_get_setup(connection);
@@ -808,7 +846,7 @@ void create_surface()
   
 #if defined(WIN32) || defined(_WIN32) || defined(__WIN32) && !defined(__CYGWIN__)
   VkWin32SurfaceCreateInfoKHR create_info = {};
-  create_info.sType = VK_STRUCTURE_TYPE_DISPLAY_SURFACE_CREATE_INFO_KHR;
+  create_info.sType = VK_STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR;
   create_info.pNext = nullptr;
   create_info.flags = 0;
   create_info.hinstance = hInst;
@@ -1345,8 +1383,20 @@ void destroy_window()
 #endif 
 }
 
+#if defined(WIN32) || defined(_WIN32) || defined(__WIN32) && !defined(__CYGWIN__)
+int APIENTRY WinMain(HINSTANCE hInstance,  
+		     HINSTANCE hPrevInstance,  
+		     LPSTR     lpCmdLine,  
+		     int       nCmdShow)
+#else 
 int main(int argc, const char* argv[])
+#endif
 {
+  std::ofstream file;
+  file.open(logfile.c_str());
+  std::streambuf* sbuf = std::cout.rdbuf();
+  std::cout.rdbuf(file.rdbuf());
+    
   create_window();
   
   if (SHOW_INSTANCE_LAYERS) {
@@ -1606,6 +1656,8 @@ int main(int argc, const char* argv[])
   destroy_instance();
 
   destroy_window();
+
+  file.close();
 
   return 0;
 }

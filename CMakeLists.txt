@@ -19,7 +19,12 @@ include_directories(include)
 add_library(Utility ${SOURCE_DIR}/util.cpp)
 add_library(Allocator ${SOURCE_DIR}/allocator.cpp)
 
+IF(WIN32)
+add_executable(Vulture WIN32 ${SOURCE_DIR}/test.cpp)
+ELSE(WIN32)
 add_executable(Vulture ${SOURCE_DIR}/test.cpp)
+ENDIF(WIN32)
+
 target_link_libraries(Vulture Utility)
 target_link_libraries(Vulture Allocator)
 
