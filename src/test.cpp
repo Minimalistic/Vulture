@@ -4,6 +4,7 @@
 #include <cstring>
 #include <string>
 #include <fstream>
+#include <iomanip>
 
 #define USE_XCB false
 
@@ -287,19 +288,23 @@ void get_physical_device_memory_properties()
 
   vkGetPhysicalDeviceMemoryProperties(physical_devices[phys_device_idx],
 				      &physical_device_mem_props);
-  std::printf("%-10s%-10s%-20s%-20s%-20s\n",
-	      "Type", "Heap", "Size", "Host_Coherent", "Host_Visible");
+  std::cout << std::left;
+  std::cout << std::setw(10) << "Type" << std::setw(10) << "Heap"
+	    << std::setw(20) << "Size" << std::setw(20) << "Host_Coherent"
+	    << std::setw(20) << "Host_Visible"
+	    << std::endl;
   for (uint32_t i = 0; i < physical_device_mem_props.memoryTypeCount; i++) {
     VkMemoryType& memType = physical_device_mem_props.memoryTypes[i];
     VkMemoryHeap& memHeap =
       physical_device_mem_props.memoryHeaps[memType.heapIndex];
-    std::printf("%-10i%-10i%-20lu%-20s%-20s\n",
-		i,
-		memType.heapIndex,
-		(unsigned long) memHeap.size,
-		HOST_COHERENT(memType.propertyFlags) ? "Y" : "N",
-		HOST_VISIBLE(memType.propertyFlags) ? "Y" : "N");
+    std::cout << std::setw(10) << i
+	      << std::setw(10) << memType.heapIndex
+	      << std::setw(20) << memHeap.size
+	      << std::setw(20) << (HOST_COHERENT(memType.propertyFlags) ? "Y" : "N")
+	      << std::setw(20) << (HOST_VISIBLE(memType.propertyFlags) ? "Y" : "N")
+	      << std::endl;
   }
+  std::cout << std::right;
 }
 
 void get_queue_family_properties()
@@ -1393,8 +1398,9 @@ int main(int argc, const char* argv[])
 #endif
 {
   std::ofstream file;
-  file.open(logfile.c_str());
   std::streambuf* sbuf = std::cout.rdbuf();
+  
+  file.open(logfile);
   std::cout.rdbuf(file.rdbuf());
     
   create_window();
@@ -1657,6 +1663,7 @@ int main(int argc, const char* argv[])
 
   destroy_window();
 
+  std::cout.rdbuf(sbuf);
   file.close();
 
   return 0;
