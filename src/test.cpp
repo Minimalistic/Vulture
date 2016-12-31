@@ -73,6 +73,8 @@ Window window;
 #define SWAPCHAIN_MIN_IMAGE_COUNT   3
 #endif
 
+#define NEXT_IMAGE_TIMEOUT          1000 // nanoseconds
+
 std::mutex device_mutex;
 std::mutex instance_mutex;
 std::vector<std::mutex> resource_mutex[2] =
@@ -87,6 +89,7 @@ std::vector<std::mutex> command_buffer_mutex(COMMAND_BUFFER_COUNT);
 std::vector<std::mutex> queue_mutex(MAX_QUEUES);
 std::mutex surface_mutex;
 std::mutex swapchain_mutex;
+std::mutex semaphore_mutex;
 
 allocator my_alloc = {};
 
@@ -94,6 +97,7 @@ uint32_t phys_device_idx = 0;
 uint32_t queue_family_idx;
 uint32_t queue_family_queue_count;
 uint32_t mem_types[2] = {UINT32_MAX, UINT32_MAX};
+uint32_t cur_swapchain_img;
 
 VkResult res;
 VkInstance inst;
@@ -120,6 +124,7 @@ std::vector<VkSurfaceFormatKHR> surface_formats;
 std::vector<VkPresentModeKHR> surface_present_modes;
 VkSwapchainKHR swapchain;
 std::vector<VkImage> swapchain_images;
+VkSemaphore semaphore;
 
 const std::string logfile = "vulture.log";
 
@@ -1224,6 +1229,49 @@ void reset_command_buffers()
   }
 }
 
+void create_semaphore()
+{
+  VkSemaphoreCreateInfo create_info = {};
+  create_info.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
+  create_info.pNext = nullptr;
+  create_info.flags = 0;
+  
+  std::cout << "Creating semaphore..." << std::endl;
+  res = vkCreateSemaphore(device,
+			  &create_info,
+			  CUSTOM_ALLOCATOR ? &alloc_callbacks : nullptr,
+			  &semaphore);
+  if (res == VK_SUCCESS)
+    std::cout << "Semaphore created successfully!" << std::endl;
+  else
+    std::cout << "Failed to create semaphore..." << std::endl;
+}
+
+void next_swapchain_image()
+{
+  std::cout << "Acquiring next swapchain image..." << std::endl;
+  res = vkAcquireNextImageKHR(device,
+			      swapchain,
+			      NEXT_IMAGE_TIMEOUT,
+			      semaphore,
+			      VK_NULL_HANDLE,
+			      &cur_swapchain_img);
+  if (res == VK_SUCCESS)
+    std::cout << "Successfully got next swapchain image: "
+	      << cur_swapchain_img << "!" << std::endl;
+  else
+    std::cout << "Failed to get next swapchain image..." << std::endl;
+}
+
+void destroy_semaphore()
+{
+  std::cout << "Destroying semaphore..." << std::endl;
+  std::lock_guard<std::mutex> lock(semaphore_mutex);
+  vkDestroySemaphore(device,
+		     semaphore,
+		     CUSTOM_ALLOCATOR ? &alloc_callbacks : nullptr);
+}
+
 void destroy_swapchain()
 {
   std::lock_guard<std::mutex> lock(swapchain_mutex);
@@ -1635,7 +1683,13 @@ int main(int argc, const char* argv[])
 
   reset_command_buffers();
 
+  create_semaphore();
+
+  next_swapchain_image();
+
   // Cleanup
+  destroy_semaphore();
+  
   destroy_swapchain();
   
   destroy_surface();
