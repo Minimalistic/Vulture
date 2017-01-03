@@ -61,3 +61,10 @@ Vulkan coding tips
 
 1) Enabling the standard validation layer is a great way to uncover bugs in
    your code during development.
+
+
+Known Issues
+====================
+
+1) As of SDK version 1.0.37.0 the VK_KHR_display extension is not supported,
+   which means true fullscreen is not supported yet.
