@@ -63,7 +63,7 @@ Window window;
 #define WINDOW_WIDTH 800
 #define WINDOW_HEIGHT 600
 
-#if defined(WIN32) || defined(_WIN32) || defined(__WIN32) && !defined(__CYGWIN__)
+#ifdef VK_USE_PLATFORM_WIN32_KHR
 #define SWAPCHAIN_IMAGE_FORMAT      VK_FORMAT_B8G8R8A8_UNORM
 #define SWAPCHAIN_PRESENT_MODE      VK_PRESENT_MODE_MAILBOX_KHR
 #define SWAPCHAIN_MIN_IMAGE_COUNT   3
@@ -128,7 +128,7 @@ VkSemaphore semaphore;
 
 const std::string logfile = "vulture.log";
 
-#if defined(WIN32) || defined(_WIN32) || defined(__WIN32) && !defined(__CYGWIN__)
+#ifdef VK_USE_PLATFORM_WIN32_KHR
 LRESULT CALLBACK WndProc(HWND hwnd,
 			 UINT uMsg,
 			 WPARAM wParam,
@@ -139,8 +139,8 @@ LRESULT CALLBACK WndProc(HWND hwnd,
 #endif
 
 void create_window()
-{  
-#if defined(WIN32) || defined(_WIN32) || defined(__WIN32) && !defined(__CYGWIN__)
+{
+#ifdef VK_USE_PLATFORM_WIN32_KHR
   TCHAR szWindowClass[] = _T("win32app");  
   TCHAR szTitle[] = _T("VultureApp");
 
@@ -223,7 +223,7 @@ void create_instance()
   inst_info.pApplicationInfo = &app_info;
   inst_info.enabledExtensionCount = 2;
   const char* enabled_extension_names[] = {
-#if defined(WIN32) || defined(_WIN32) || defined(__WIN32) && !defined(__CYGWIN__)
+#ifdef VK_USE_PLATFORM_WIN32_KHR
     "VK_KHR_win32_surface",
 #elif USE_XCB
     "VK_KHR_xcb_surface",
@@ -335,8 +335,8 @@ void get_queue_family_properties()
 	      << std::endl;
     if (queue_family_idx == UINT32_MAX) {
       VkBool32 supports;
-      
-#if defined(WIN32) || defined(_WIN32) || defined(__WIN32) && !defined(__CYGWIN__)
+
+#ifdef VK_USE_PLATFORM_WIN32_KHR
       supports =
 	vkGetPhysicalDeviceWin32PresentationSupportKHR(physical_devices[phys_device_idx], static_cast<uint32_t>(i));
 #elif USE_XCB
@@ -845,7 +845,7 @@ void allocate_command_buffers()
 void create_surface()
 {
   std::string surface_name;
-#if defined(WIN32) || defined(_WIN32) || defined(__WIN32) && !defined(__CYGWIN__)
+#ifdef VK_USE_PLATFORM_WIN32_KHR
   surface_name = "Win32";
 #elif USE_XCB
   surface_name = "XCB";
@@ -854,8 +854,8 @@ void create_surface()
 #endif
   
   std::cout << "Creating " << surface_name << " surface..." << std::endl;
-  
-#if defined(WIN32) || defined(_WIN32) || defined(__WIN32) && !defined(__CYGWIN__)
+
+#ifdef VK_USE_PLATFORM_WIN32_KHR
   VkWin32SurfaceCreateInfoKHR create_info = {};
   create_info.sType = VK_STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR;
   create_info.pNext = nullptr;
@@ -1426,7 +1426,7 @@ void destroy_instance()
 
 void destroy_window()
 {
-#if defined(WIN32) || defined(_WIN32) || defined(__WIN32) && !defined(__CYGWIN__)
+#ifdef VK_USE_PLATFORM_WIN32_KHR
   DestroyWindow(hWnd);
 #elif USE_XCB
   xcb_destroy_window(connection, window);
@@ -1437,7 +1437,7 @@ void destroy_window()
 #endif 
 }
 
-#if defined(WIN32) || defined(_WIN32) || defined(__WIN32) && !defined(__CYGWIN__)
+#ifdef VK_USE_PLATFORM_WIN32_KHR
 int APIENTRY WinMain(HINSTANCE hInstance,  
 		     HINSTANCE hPrevInstance,  
 		     LPSTR     lpCmdLine,  
