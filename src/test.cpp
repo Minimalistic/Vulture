@@ -75,6 +75,8 @@ Window window;
 
 #define NEXT_IMAGE_TIMEOUT          1000 // nanoseconds
 
+std::string platform;
+
 std::mutex device_mutex;
 std::mutex instance_mutex;
 std::vector<std::mutex> resource_mutex[2] =
@@ -138,8 +140,21 @@ LRESULT CALLBACK WndProc(HWND hwnd,
 }
 #endif
 
+void get_platform()
+{
+  #ifdef VK_USE_PLATFORM_WIN32_KHR
+  platform = "Win32";
+  #elif USE_XCB
+  platform = "Linux (XCB)";
+  #else
+  platform = "Linux (Xlib)";
+  #endif
+}
+
 void create_window()
 {
+  std::cout << "Creating " << platform << " window..." << std::endl;
+  
 #ifdef VK_USE_PLATFORM_WIN32_KHR
   TCHAR szWindowClass[] = _T("win32app");  
   TCHAR szTitle[] = _T("VultureApp");
@@ -844,16 +859,7 @@ void allocate_command_buffers()
 
 void create_surface()
 {
-  std::string surface_name;
-#ifdef VK_USE_PLATFORM_WIN32_KHR
-  surface_name = "Win32";
-#elif USE_XCB
-  surface_name = "XCB";
-#else
-  surface_name = "Xlib";
-#endif
-  
-  std::cout << "Creating " << surface_name << " surface..." << std::endl;
+  std::cout << "Creating " << platform << " surface..." << std::endl;
 
 #ifdef VK_USE_PLATFORM_WIN32_KHR
   VkWin32SurfaceCreateInfoKHR create_info = {};
@@ -1451,6 +1457,8 @@ int main(int argc, const char* argv[])
   
   file.open(logfile);
   std::cout.rdbuf(file.rdbuf());
+
+  get_platform();
     
   create_window();
   
