@@ -1696,9 +1696,10 @@ int main(int argc, const char* argv[])
   next_swapchain_image();
 
   // Cleanup
-  destroy_semaphore();
-  
+  wait_for_device();
   destroy_swapchain();
+
+  destroy_semaphore();
   
   destroy_surface();
   
@@ -1719,7 +1720,6 @@ int main(int argc, const char* argv[])
   destroy_images();
 
   wait_for_device();
-
   destroy_device();
   
   destroy_instance();
