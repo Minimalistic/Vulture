@@ -92,6 +92,7 @@ std::vector<std::mutex> queue_mutex(MAX_QUEUES);
 std::mutex surface_mutex;
 std::mutex swapchain_mutex;
 std::mutex semaphore_mutex;
+std::mutex shader_mutex;
 
 allocator my_alloc = {};
 
@@ -127,6 +128,7 @@ std::vector<VkPresentModeKHR> surface_present_modes;
 VkSwapchainKHR swapchain;
 std::vector<VkImage> swapchain_images;
 VkSemaphore semaphore;
+VkShaderModule shader;
 
 const std::string logfile = "vulture.log";
 
@@ -1253,6 +1255,41 @@ void create_semaphore()
     std::cout << "Failed to create semaphore..." << std::endl;
 }
 
+void create_shader(const std::string& filename)
+{
+  std::cout << "Reading shader file: " << filename << "..." << std::endl;
+  std::ifstream is(filename,
+		   std::ios::binary | std::ios::in | std::ios::ate);
+  if (is.is_open()) {
+    int size = is.tellg();
+    is.seekg(0, std::ios::beg);
+    char* code = new char[size];
+    is.read(code, size);
+    is.close();
+
+    VkShaderModuleCreateInfo create_info = {};
+    create_info.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
+    create_info.pNext = nullptr;
+    create_info.flags = 0;
+    create_info.codeSize = size;
+    create_info.pCode = (uint32_t*) code;
+
+    std::cout << "Creating shader module..." << std::endl;
+    res = vkCreateShaderModule(device,
+			       &create_info,
+			       CUSTOM_ALLOCATOR ? &alloc_callbacks : nullptr,
+			       &shader);
+    if (res == VK_SUCCESS)
+      std::cout << "Shader module created successfully!" << std::endl;
+    else
+      std::cout << "Failed to create shader module..." << std::endl;
+    
+    delete[](code);
+  } else
+    std::cout << "Failed to read shader file: " << filename << "..."
+	      << std::endl;
+}
+
 void next_swapchain_image()
 {
   std::cout << "Acquiring next swapchain image..." << std::endl;
@@ -1267,6 +1304,15 @@ void next_swapchain_image()
 	      << cur_swapchain_img << "!" << std::endl;
   else
     std::cout << "Failed to get next swapchain image..." << std::endl;
+}
+
+void destroy_shader()
+{
+  std::cout << "Destroying shader module..." << std::endl;
+  std::lock_guard<std::mutex> lock(shader_mutex);
+  vkDestroyShaderModule(device,
+			shader,
+			CUSTOM_ALLOCATOR ? &alloc_callbacks : nullptr);
 }
 
 void destroy_semaphore()
@@ -1693,11 +1739,15 @@ int main(int argc, const char* argv[])
 
   create_semaphore();
 
+  create_shader("simple.spv");
+
   next_swapchain_image();
 
   // Cleanup
   wait_for_device();
   destroy_swapchain();
+
+  destroy_shader();
 
   destroy_semaphore();
   

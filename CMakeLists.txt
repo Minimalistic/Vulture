@@ -12,17 +12,17 @@ set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/cmake")
 # Enable C++11 support
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")
 
-set(SOURCE_DIR src)
+set(CPP_SOURCE_DIR "src/main")
 
 include_directories(include)
 
-add_library(Utility ${SOURCE_DIR}/util.cpp)
-add_library(Allocator ${SOURCE_DIR}/allocator.cpp)
+add_library(Utility ${CPP_SOURCE_DIR}/util.cpp)
+add_library(Allocator ${CPP_SOURCE_DIR}/allocator.cpp)
 
 IF(WIN32)
-add_executable(Vulture WIN32 ${SOURCE_DIR}/test.cpp)
+add_executable(Vulture WIN32 ${CPP_SOURCE_DIR}/test.cpp)
 ELSE(WIN32)
-add_executable(Vulture ${SOURCE_DIR}/test.cpp)
+add_executable(Vulture ${CPP_SOURCE_DIR}/test.cpp)
 ENDIF(WIN32)
 
 target_link_libraries(Vulture Utility)
@@ -55,5 +55,12 @@ ELSE(WIN32)
   # Link XCB
   find_package(XCB REQUIRED)
   target_link_libraries(Vulture ${XCB_LIBRARIES})
+
+  # Compile shaders
+  set(SHADER_DIR      "${CMAKE_SOURCE_DIR}/src/shader")
+  set(SHADER_COMPILER "$ENV{VULKAN_SDK}/bin/glslangValidator")
+  execute_process(
+    COMMAND ${CMAKE_SOURCE_DIR}/src/script/compile_shaders.sh ${SHADER_DIR} ${SHADER_COMPILER}
+    WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
 
 ENDIF(WIN32)
