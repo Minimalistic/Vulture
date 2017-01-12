@@ -96,8 +96,8 @@ std::mutex swapchain_mutex;
 std::mutex semaphore_mutex;
 std::mutex shader_mutex;
 std::vector<std::mutex> compute_pipeline_mutex(COMPUTE_PIPELINE_COUNT);
-std::vector<std::mutex> compute_pipeline_cache_mutex(COMPUTE_PIPELINE_COUNT);
-std::vector<std::mutex> compute_pipeline_cache_data_mutex(COMPUTE_PIPELINE_COUNT);
+std::mutex compute_pipeline_cache_mutex;
+std::mutex compute_pipeline_cache_data_mutex;
 
 allocator my_alloc = {};
 
@@ -135,8 +135,8 @@ std::vector<VkImage> swapchain_images;
 VkSemaphore semaphore;
 VkShaderModule shader;
 std::vector<VkPipeline> compute_pipelines;
-std::vector<VkPipelineCache> compute_pipeline_cache;
-std::vector<void*> compute_pipeline_cache_data;
+VkPipelineCache compute_pipeline_cache;
+void* compute_pipeline_cache_data;
 
 const std::string logfile = "vulture.log";
 
@@ -1298,11 +1298,39 @@ void create_shader(const std::string& filename)
 	      << std::endl;
 }
 
-void create_compute_pipeline_caches()
+void create_compute_pipeline_cache()
 {
-  compute_pipeline_cache.resize(COMPUTE_PIPELINE_COUNT);
+  std::vector<VkPipelineCache> subcaches(COMPUTE_PIPELINE_COUNT);
 
+  bool subcaches_created = true;
   for (unsigned int i = 0; i != COMPUTE_PIPELINE_COUNT; i++) {
+    VkPipelineCacheCreateInfo subcache_info = {};
+    subcache_info.sType = VK_STRUCTURE_TYPE_PIPELINE_CACHE_CREATE_INFO;
+    subcache_info.pNext = nullptr;
+    subcache_info.flags = 0;
+    subcache_info.initialDataSize = 0;
+    subcache_info.pInitialData = nullptr;
+
+    std::cout << "Creating compute pipeline subcache " << (i+1) << "/"
+	      << COMPUTE_PIPELINE_COUNT << "..." << std::endl;
+    res = vkCreatePipelineCache(device,
+				&subcache_info,
+				CUSTOM_ALLOCATOR ? &alloc_callbacks : nullptr,
+				&subcaches[i]);
+    if (res == VK_SUCCESS)
+      std::cout << "Compute pipeline subcache " << (i+1) << "/"
+		<< COMPUTE_PIPELINE_COUNT << " created successfully!"
+		<< std::endl;
+    else {
+      subcaches_created = false;
+      std::cout << "Failed to create compute pipeline subcache "
+		<< (i+1) << "/" << COMPUTE_PIPELINE_COUNT  << "..."
+		<< std::endl;
+      break;
+    }
+  }
+
+  if (subcaches_created) {
     VkPipelineCacheCreateInfo cache_info = {};
     cache_info.sType = VK_STRUCTURE_TYPE_PIPELINE_CACHE_CREATE_INFO;
     cache_info.pNext = nullptr;
@@ -1310,21 +1338,48 @@ void create_compute_pipeline_caches()
     cache_info.initialDataSize = 0;
     cache_info.pInitialData = nullptr;
 
-    std::cout << "Creating compute pipeline cache " << (i+1) << "/"
-	      << COMPUTE_PIPELINE_COUNT << "..." << std::endl;
+    std::cout << "Creating compute pipeline cache..."
+	      << std::endl;
     res = vkCreatePipelineCache(device,
 				&cache_info,
 				CUSTOM_ALLOCATOR ? &alloc_callbacks : nullptr,
-				&compute_pipeline_cache[i]);
-    if (res == VK_SUCCESS)
-      std::cout << "Compute pipeline cache " << (i+1) << "/"
-		<< COMPUTE_PIPELINE_COUNT << " created successfully!"
+				&compute_pipeline_cache);
+    if (res == VK_SUCCESS) {
+      std::cout << "Compute pipeline cache created successfully!"
 		<< std::endl;
+      std::cout << "Merging "
+		<< subcaches.size() << " subcache"
+		<< (subcaches.size() != 1 ? "s" : "")
+		<< " into aggregate cache..." << std::endl;
+      res = vkMergePipelineCaches(device,
+				  compute_pipeline_cache,
+				  static_cast<uint32_t>(subcaches.size()),
+				  subcaches.data());
+      if (res == VK_SUCCESS) {
+	std::cout << "Subcache"
+		  << (COMPUTE_PIPELINE_COUNT != 1 ? "s" : "")
+		  << " merged successfully!"
+		  << std::endl;
+	std::cout << "Destroying subcache"
+		  << (COMPUTE_PIPELINE_COUNT != 1 ? "s..." : "...")
+		  << std::endl;
+	for (unsigned int i = 0; i != COMPUTE_PIPELINE_COUNT; i++)
+	  vkDestroyPipelineCache(device,
+				 subcaches[i],
+				 CUSTOM_ALLOCATOR ? &alloc_callbacks : nullptr);
+      }
+      else
+	std::cout << "Failed to merge compute pipeline subcaches..."
+		  << std::endl;
+    }
     else
-      std::cout << "Failed to create compute pipeline cache "
-		<< (i+1) << "/" << COMPUTE_PIPELINE_COUNT  << "..."
-		<< std::endl; 
-  }
+      std::cout << "Failed to create compute pipeline cache..."
+		<< std::endl;
+  } else
+    std::cout << "Failed to create compute pipeline cache: "
+	      << "Failed to create compute pipeline subcache"
+	      << (COMPUTE_PIPELINE_COUNT != 1 ? "s..." : "")
+	      << std::endl;
 }
 
 // TODO: finish implementing
@@ -1347,56 +1402,65 @@ void create_compute_pipelines()
     create_infos[i].pNext = nullptr;
     create_infos[i].flags = 0;
     create_infos[i].stage = stage_info;
+    //create_infos[i].layout = compute_pipeline_layout[i];
+    create_infos[i].basePipelineHandle = VK_NULL_HANDLE;
+    create_infos[i].basePipelineIndex = -1;
   }
+
+  std::cout << "Creating "
+	    << COMPUTE_PIPELINE_COUNT << "compute pipeline"
+	    << (COMPUTE_PIPELINE_COUNT != 1 ? "s..." : "...") << std::endl;
+  res = vkCreateComputePipelines(device,
+				 compute_pipeline_cache,
+				 COMPUTE_PIPELINE_COUNT,
+				 create_infos.data(),
+				 CUSTOM_ALLOCATOR ? &alloc_callbacks : nullptr,
+				 compute_pipelines.data());
+  if (res == VK_SUCCESS)
+    std::cout << "Created "
+	      << COMPUTE_PIPELINE_COUNT << "compute pipeline"
+	      << (COMPUTE_PIPELINE_COUNT != 1 ? "s" : "")
+	      << " successfully!" << std::endl;
+  else
+    std::cout << "Failed to create compute pipeline"
+	      << (COMPUTE_PIPELINE_COUNT != 1 ? "s..." : "...")
+	      << std::endl;
 }
 
 void fetch_compute_pipeline_cache_data()
 {
-  compute_pipeline_cache_data.resize(COMPUTE_PIPELINE_COUNT);
-  
-  for (unsigned int i = 0; i != COMPUTE_PIPELINE_COUNT; i++) {
-    std::cout << "Fetching size of compute pipeline cache " << (i+1)
-	      << "/" << COMPUTE_PIPELINE_COUNT << "..."
+  std::cout << "Fetching size of compute pipeline cache..."
+	    << std::endl;
+  size_t cache_size;
+  res = vkGetPipelineCacheData(device,
+			       compute_pipeline_cache,
+			       &cache_size,
+			       nullptr);
+  if (res == VK_SUCCESS) {
+    std::cout << "Fetching data for compute pipeline cache..."
 	      << std::endl;
-    size_t cache_size;
+    compute_pipeline_cache_data = malloc(cache_size);
     res = vkGetPipelineCacheData(device,
-				 compute_pipeline_cache[i],
+				 compute_pipeline_cache,
 				 &cache_size,
-				 nullptr);
-    if (res == VK_SUCCESS) {
-      std::cout << "Fetching data for compute pipeline cache " << (i+1)
-		<< "/" << COMPUTE_PIPELINE_COUNT << "..." << std::endl;
-      compute_pipeline_cache_data[i] = malloc(cache_size);
-      res = vkGetPipelineCacheData(device,
-       				   compute_pipeline_cache[i],
-       				   &cache_size,
-       				   compute_pipeline_cache_data[i]);
-      if (res == VK_SUCCESS)
-	std::cout << "Successfully fetched data for compute pipeline cache "
-		  << (i+1) << "/" << COMPUTE_PIPELINE_COUNT << "!"
-		  << std::endl;
-      else
-	std::cout << "Failed to fetch data for compute pipeline cache "
-		  << (i+1) << "/" << COMPUTE_PIPELINE_COUNT << "..."
-		  << std::endl;
-    }
-  }
+				 compute_pipeline_cache_data);
+    if (res == VK_SUCCESS)
+      std::cout << "Successfully fetched compute pipeline cache data!"
+		<< std::endl;
+    else
+      std::cout << "Failed to fetch compute pipeline cache data..."
+		<< std::endl;
+  } else
+    std::cout << "Failed to get size of compute pipeline cache..."
+	      << std::endl;
 }
 
 void delete_compute_pipeline_cache_data()
 {
-  std::vector<std::unique_lock<std::mutex>> locks;
-  for (auto& mut : compute_pipeline_cache_data_mutex)
-    locks.emplace_back(mut, std::defer_lock);
-
-  for (unsigned int i = 0; i != COMPUTE_PIPELINE_COUNT; i++) {
-    std::cout << "Freeing fetched data for compute pipeline cache "
-	      << (i+1) << "/" << COMPUTE_PIPELINE_COUNT << "..."
-	      << std::endl;
-    locks[i].lock();
-    free(compute_pipeline_cache_data[i]);
-    locks[i].unlock();
-  }
+  std::lock_guard<std::mutex> lock(compute_pipeline_cache_data_mutex);
+  std::cout << "Freeing fetched data for compute pipeline cache..."
+	    << std::endl;
+  free(compute_pipeline_cache_data);
 }
 
 void next_swapchain_image()
@@ -1432,21 +1496,14 @@ void destroy_compute_pipelines()
   }
 }
 
-void destroy_compute_pipeline_caches()
+void destroy_compute_pipeline_cache()
 {
-  std::vector<std::unique_lock<std::mutex>> locks;
-  for (auto& mut : compute_pipeline_cache_mutex)
-    locks.emplace_back(mut, std::defer_lock);
-
-  for (unsigned int i = 0; i != COMPUTE_PIPELINE_COUNT; i++) {
-    std::cout << "Destroying compute pipeline cache " << (i+1) << "/"
-	      << COMPUTE_PIPELINE_COUNT << "..." << std::endl;
-    locks[i].lock();
-    vkDestroyPipelineCache(device,
-			   compute_pipeline_cache[i],
-			   CUSTOM_ALLOCATOR ? &alloc_callbacks : nullptr);
-    locks[i].unlock();
-  }
+  std::lock_guard<std::mutex> lock(compute_pipeline_cache_mutex);
+  std::cout << "Destroying compute pipeline cache..."
+	    << std::endl;
+  vkDestroyPipelineCache(device,
+			 compute_pipeline_cache,
+			 CUSTOM_ALLOCATOR ? &alloc_callbacks : nullptr);
 }
 
 void destroy_shader()
@@ -1884,7 +1941,7 @@ int main(int argc, const char* argv[])
 
   create_shader("shaders/simple.comp.spv");
 
-  create_compute_pipeline_caches();
+  create_compute_pipeline_cache();
   //create_compute_pipelines();
 
   fetch_compute_pipeline_cache_data();
@@ -1897,7 +1954,7 @@ int main(int argc, const char* argv[])
   destroy_swapchain();
 
   //destroy_compute_pipelines();
-  destroy_compute_pipeline_caches();
+  destroy_compute_pipeline_cache();
 
   destroy_shader();
 
