@@ -52,6 +52,9 @@ Window window;
 #define IMAGE_COUNT                     21
 #define COMMAND_BUFFER_COUNT            5
 
+#define COMMAND_BUFFER_COMPUTE          0
+#define COMMAND_BUFFER_GRAPHICS         1
+
 #define COMPUTE_PIPELINE_COUNT          1
 
 #define MAX_QUEUES                      64
@@ -98,6 +101,7 @@ std::mutex shader_mutex;
 std::vector<std::mutex> compute_pipeline_mutex(COMPUTE_PIPELINE_COUNT);
 std::mutex compute_pipeline_cache_mutex;
 std::mutex compute_pipeline_cache_data_mutex;
+std::mutex compute_pipeline_layout_mutex;
 
 allocator my_alloc = {};
 
@@ -137,6 +141,7 @@ VkShaderModule shader;
 std::vector<VkPipeline> compute_pipelines;
 VkPipelineCache compute_pipeline_cache;
 void* compute_pipeline_cache_data;
+VkPipelineLayout compute_pipeline_layout;
 
 const std::string logfile = "vulture.log";
 
@@ -1111,6 +1116,28 @@ void begin_recording()
   }
 }
 
+void begin_recording(uint32_t command_buf_idx)
+{
+   VkCommandBufferBeginInfo cmd_buf_begin_info = {};
+  cmd_buf_begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+  cmd_buf_begin_info.pNext = nullptr;
+  cmd_buf_begin_info.flags = 0;
+  cmd_buf_begin_info.pInheritanceInfo = nullptr;
+  std::cout << "Beginning command buffer "
+	    << command_buf_idx << "..." << std::endl;
+  std::lock_guard<std::mutex> pool_lock(command_pool_mutex);
+  std::lock_guard<std::mutex> buf_lock(command_buffer_mutex[command_buf_idx]);
+  res = vkBeginCommandBuffer(command_buffers[command_buf_idx],
+			     &cmd_buf_begin_info);
+  if (res == VK_SUCCESS)
+    std::cout << "Command buffer " << command_buf_idx
+	      << " is now recording." << std::endl;
+  else
+    std::cout << "Failed to begin command buffer "
+	      << command_buf_idx << "..."
+	      << std::endl;   
+}
+
 void record_copy_buffer_commands()
 {
   std::lock_guard<std::mutex> lock(command_pool_mutex);
@@ -1183,6 +1210,21 @@ void end_recording()
 		<< std::endl;      
     locks[i].unlock();
   }
+}
+
+void end_recording(uint32_t command_buf_idx)
+{
+  std::cout << "Ending command buffer " << command_buf_idx 
+	    << "..." << std::endl;
+  std::lock_guard<std::mutex> pool_lock(command_pool_mutex);
+  std::lock_guard<std::mutex> buf_lock(command_buffer_mutex[command_buf_idx]);
+  res = vkEndCommandBuffer(command_buffers[command_buf_idx]);
+  if (res == VK_SUCCESS)
+    std::cout << "Command buffer " << command_buf_idx
+	      << " is no longer recording." << std::endl;
+  else
+    std::cout << "Failed to end command buffer " << command_buf_idx
+	      << "..." << std::endl;      
 }
 
 void submit_to_queue(uint32_t queue_idx)
@@ -1382,7 +1424,31 @@ void create_compute_pipeline_cache()
 	      << std::endl;
 }
 
-// TODO: finish implementing
+void create_compute_pipeline_layout()
+{
+  VkPipelineLayoutCreateInfo create_info = {};
+  create_info.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+  create_info.pNext = nullptr;
+  create_info.flags = 0;
+  create_info.setLayoutCount = 0;
+  create_info.pSetLayouts = nullptr;
+  create_info.pushConstantRangeCount = 0;
+  create_info.pPushConstantRanges = nullptr;
+
+  std::cout << "Creating compute pipeline layout..."
+	    << std::endl;
+  res = vkCreatePipelineLayout(device,
+			       &create_info,
+			       CUSTOM_ALLOCATOR ? &alloc_callbacks : nullptr,
+			       &compute_pipeline_layout);
+  if (res == VK_SUCCESS)
+    std::cout << "Compute pipeline layout created successfully!"
+	      << std::endl;
+  else
+    std::cout << "Failed to create compute pipeline layout..."
+	      << std::endl;
+}
+
 void create_compute_pipelines()
 {
   compute_pipelines.resize(COMPUTE_PIPELINE_COUNT);
@@ -1402,7 +1468,7 @@ void create_compute_pipelines()
     create_infos[i].pNext = nullptr;
     create_infos[i].flags = 0;
     create_infos[i].stage = stage_info;
-    //create_infos[i].layout = compute_pipeline_layout[i];
+    create_infos[i].layout = compute_pipeline_layout;
     create_infos[i].basePipelineHandle = VK_NULL_HANDLE;
     create_infos[i].basePipelineIndex = -1;
   }
@@ -1425,6 +1491,19 @@ void create_compute_pipelines()
     std::cout << "Failed to create compute pipeline"
 	      << (COMPUTE_PIPELINE_COUNT != 1 ? "s..." : "...")
 	      << std::endl;
+}
+
+void record_bind_compute_pipeline(uint32_t pipeline_idx,
+				  uint32_t command_buf_idx)
+{
+  std::lock_guard<std::mutex> buf_lock(command_buffer_mutex[command_buf_idx]);
+  std::lock_guard<std::mutex> pool_lock(command_pool_mutex);
+  std::cout << "Binding compute pipeline " << pipeline_idx
+	    << " to command buffer " << command_buf_idx
+	    << "..." << std::endl;
+  vkCmdBindPipeline(command_buffers[command_buf_idx],
+		    VK_PIPELINE_BIND_POINT_COMPUTE,
+		    compute_pipelines[pipeline_idx]);
 }
 
 void fetch_compute_pipeline_cache_data()
@@ -1494,6 +1573,15 @@ void destroy_compute_pipelines()
 		      CUSTOM_ALLOCATOR ? &alloc_callbacks : nullptr);
     locks[i].unlock();
   }
+}
+
+void destroy_compute_pipeline_layout()
+{
+  std::lock_guard<std::mutex> lock(compute_pipeline_layout_mutex);
+  std::cout << "Destroying compute pipeline layout..." << std::endl;
+  vkDestroyPipelineLayout(device,
+			  compute_pipeline_layout,
+			  CUSTOM_ALLOCATOR ? &alloc_callbacks : nullptr);
 }
 
 void destroy_compute_pipeline_cache()
@@ -1942,7 +2030,14 @@ int main(int argc, const char* argv[])
   create_shader("shaders/simple.comp.spv");
 
   create_compute_pipeline_cache();
-  //create_compute_pipelines();
+  create_compute_pipeline_layout();
+  create_compute_pipelines();
+
+  begin_recording(COMMAND_BUFFER_COMPUTE);
+  uint32_t compute_pipeline_idx = 0;
+  record_bind_compute_pipeline(compute_pipeline_idx,
+			       COMMAND_BUFFER_COMPUTE);
+  end_recording(COMMAND_BUFFER_COMPUTE);
 
   fetch_compute_pipeline_cache_data();
   delete_compute_pipeline_cache_data();
@@ -1953,7 +2048,8 @@ int main(int argc, const char* argv[])
   wait_for_device();
   destroy_swapchain();
 
-  //destroy_compute_pipelines();
+  destroy_compute_pipelines();
+  destroy_compute_pipeline_layout();
   destroy_compute_pipeline_cache();
 
   destroy_shader();
