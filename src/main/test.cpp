@@ -1227,7 +1227,7 @@ void end_recording(uint32_t command_buf_idx)
 	      << "..." << std::endl;      
 }
 
-void submit_to_queue(uint32_t queue_idx)
+void submit_all_to_queue(uint32_t queue_idx)
 {
   std::vector<VkSubmitInfo> submit_infos(1);
   submit_infos[0].sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
@@ -1252,6 +1252,35 @@ void submit_to_queue(uint32_t queue_idx)
 	      << " successfully!" << std::endl;
   else
     std::cout << "Failed to submit command buffers to queue "
+	      << queue_idx << "..." << std::endl;
+}
+
+void submit_to_queue(uint32_t command_buf_idx, uint32_t queue_idx)
+{
+  std::vector<VkSubmitInfo> submit_infos(1);
+  submit_infos[0].sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+  submit_infos[0].pNext = nullptr;
+  submit_infos[0].waitSemaphoreCount = 0;
+  submit_infos[0].pWaitSemaphores = nullptr;
+  submit_infos[0].pWaitDstStageMask = nullptr;
+  submit_infos[0].commandBufferCount = 1;
+  submit_infos[0].pCommandBuffers = &command_buffers[command_buf_idx];
+  submit_infos[0].signalSemaphoreCount = 0;
+  submit_infos[0].pSignalSemaphores = nullptr;
+  std::cout << "Submitting command buffer " << command_buf_idx
+	    << " to queue " << queue_idx << "..." << std::endl;
+  std::lock_guard<std::mutex> lock(queue_mutex[queue_idx]);
+  res = vkQueueSubmit(queues[queue_idx],
+		      static_cast<uint32_t>(submit_infos.size()),
+		      submit_infos.data(),
+		      VK_NULL_HANDLE);
+  if (res == VK_SUCCESS)
+    std::cout << "Command buffer " << command_buf_idx
+	      << " submitted to queue " << queue_idx
+	      << " successfully!" << std::endl;
+  else
+    std::cout << "Failed to submit command buffer "
+	      << command_buf_idx << " to queue "
 	      << queue_idx << "..." << std::endl;
 }
 
@@ -1285,6 +1314,20 @@ void reset_command_buffers()
 		<< std::endl;
     locks[i].unlock();
   }
+}
+
+void reset_command_buffer(uint32_t command_buf_idx)
+{
+  std::lock_guard<std::mutex> lock(command_buffer_mutex[command_buf_idx]);
+  std::cout << "Resetting command buffer " << command_buf_idx << "..."
+	    << std::endl;
+  res = vkResetCommandBuffer(command_buffers[command_buf_idx], 0);
+  if (res == VK_SUCCESS)
+    std::cout << "Command buffer " << command_buf_idx
+	      << " reset successfully!" << std::endl;
+  else
+    std::cout << "Failed to reset command buffer " << command_buf_idx
+	      << "..." << std::endl;
 }
 
 void create_semaphore()
@@ -1474,7 +1517,7 @@ void create_compute_pipelines()
   }
 
   std::cout << "Creating "
-	    << COMPUTE_PIPELINE_COUNT << "compute pipeline"
+	    << COMPUTE_PIPELINE_COUNT << " compute pipeline"
 	    << (COMPUTE_PIPELINE_COUNT != 1 ? "s..." : "...") << std::endl;
   res = vkCreateComputePipelines(device,
 				 compute_pipeline_cache,
@@ -1484,7 +1527,7 @@ void create_compute_pipelines()
 				 compute_pipelines.data());
   if (res == VK_SUCCESS)
     std::cout << "Created "
-	      << COMPUTE_PIPELINE_COUNT << "compute pipeline"
+	      << COMPUTE_PIPELINE_COUNT << " compute pipeline"
 	      << (COMPUTE_PIPELINE_COUNT != 1 ? "s" : "")
 	      << " successfully!" << std::endl;
   else
@@ -1977,7 +2020,7 @@ int main(int argc, const char* argv[])
 	    READ_LENGTH);
 
   uint32_t submit_queue_idx = 0;
-  submit_to_queue(submit_queue_idx);
+  submit_all_to_queue(submit_queue_idx);
   wait_for_queue(submit_queue_idx);
 
   std::cout << "After submit:" << std::endl;
@@ -2011,7 +2054,7 @@ int main(int argc, const char* argv[])
 	    READ_OFFSET,
 	    READ_LENGTH);
 
-  submit_to_queue(submit_queue_idx);
+  submit_all_to_queue(submit_queue_idx);
   wait_for_queue(submit_queue_idx);
 
   std::cout << "After submit:" << std::endl;
@@ -2038,6 +2081,10 @@ int main(int argc, const char* argv[])
   record_bind_compute_pipeline(compute_pipeline_idx,
 			       COMMAND_BUFFER_COMPUTE);
   end_recording(COMMAND_BUFFER_COMPUTE);
+
+  submit_to_queue(COMMAND_BUFFER_COMPUTE, submit_queue_idx);
+  wait_for_queue(submit_queue_idx);
+  reset_command_buffer(COMMAND_BUFFER_COMPUTE);
 
   fetch_compute_pipeline_cache_data();
   delete_compute_pipeline_cache_data();
