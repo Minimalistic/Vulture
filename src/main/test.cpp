@@ -1354,7 +1354,7 @@ void create_shader(const std::string& filename)
   std::ifstream is(filename,
 		   std::ios::binary | std::ios::in | std::ios::ate);
   if (is.is_open()) {
-    int size = is.tellg();
+    auto size = is.tellg();
     is.seekg(0, std::ios::beg);
     char* code = new char[size];
     is.read(code, size);
