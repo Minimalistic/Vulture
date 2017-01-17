@@ -35,11 +35,18 @@ include_directories("$ENV{VULKAN_SDK}/include")
 find_package(Threads REQUIRED)
 target_link_libraries(Vulture ${CMAKE_THREAD_LIBS_INIT})
 
+set(SHADER_DIR "${CMAKE_SOURCE_DIR}/src/shader")
+set(SHADER_COMPILER "$ENV{VULKAN_SDK}/bin/glslangValidator")
+
 IF(WIN32)
 
   # Link Vulkan
   find_library(Vulkan_LIBRARY NAMES vulkan-1 HINTS "$ENV{VULKAN_SDK}/Bin" REQUIRED)
   target_link_libraries(Vulture ${Vulkan_LIBRARY})
+
+  execute_process(
+    COMMAND ${CMAKE_SOURCE_DIR}/src/script/compile_shaders.bat ${SHADER_DIR} ${SHADER_COMPILER}
+    WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
 
 ELSE(WIN32)
 
@@ -56,9 +63,6 @@ ELSE(WIN32)
   find_package(XCB REQUIRED)
   target_link_libraries(Vulture ${XCB_LIBRARIES})
 
-  # Compile shaders
-  set(SHADER_DIR      "${CMAKE_SOURCE_DIR}/src/shader")
-  set(SHADER_COMPILER "$ENV{VULKAN_SDK}/bin/glslangValidator")
   execute_process(
     COMMAND ${CMAKE_SOURCE_DIR}/src/script/compile_shaders.sh ${SHADER_DIR} ${SHADER_COMPILER}
     WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
