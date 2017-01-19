@@ -1541,12 +1541,24 @@ void record_bind_compute_pipeline(uint32_t pipeline_idx,
 {
   std::lock_guard<std::mutex> buf_lock(command_buffer_mutex[command_buf_idx]);
   std::lock_guard<std::mutex> pool_lock(command_pool_mutex);
-  std::cout << "Binding compute pipeline " << pipeline_idx
+  std::cout << "Recording bind compute pipeline " << pipeline_idx
 	    << " to command buffer " << command_buf_idx
 	    << "..." << std::endl;
   vkCmdBindPipeline(command_buffers[command_buf_idx],
 		    VK_PIPELINE_BIND_POINT_COMPUTE,
 		    compute_pipelines[pipeline_idx]);
+}
+
+void record_dispatch_compute_pipeline(uint32_t command_buf_idx)
+{
+  std::lock_guard<std::mutex> buf_lock(command_buffer_mutex[command_buf_idx]);
+  std::lock_guard<std::mutex> pool_lock(command_pool_mutex);
+  std::cout << "Recording dispatch compute pipeline to command buffer "
+	    << command_buf_idx << "..." << std::endl;
+  vkCmdDispatch(command_buffers[command_buf_idx],
+		4,
+		5,
+		6);
 }
 
 void fetch_compute_pipeline_cache_data()
@@ -2080,6 +2092,7 @@ int main(int argc, const char* argv[])
   uint32_t compute_pipeline_idx = 0;
   record_bind_compute_pipeline(compute_pipeline_idx,
 			       COMMAND_BUFFER_COMPUTE);
+  record_dispatch_compute_pipeline(COMMAND_BUFFER_COMPUTE);
   end_recording(COMMAND_BUFFER_COMPUTE);
 
   submit_to_queue(COMMAND_BUFFER_COMPUTE, submit_queue_idx);
