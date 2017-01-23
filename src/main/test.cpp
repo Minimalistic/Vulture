@@ -57,6 +57,8 @@ Window window;
 
 #define COMPUTE_PIPELINE_COUNT          1
 
+#define DESCRIPTOR_SET_COUNT            1
+
 #define MAX_QUEUES                      64
 
 #define READ_OFFSET                     0
@@ -102,6 +104,7 @@ std::vector<std::mutex> compute_pipeline_mutex(COMPUTE_PIPELINE_COUNT);
 std::mutex compute_pipeline_cache_mutex;
 std::mutex compute_pipeline_cache_data_mutex;
 std::mutex compute_pipeline_layout_mutex;
+std::vector<std::mutex> descriptor_set_layout_mutex(DESCRIPTOR_SET_COUNT);
 
 allocator my_alloc = {};
 
@@ -142,6 +145,7 @@ std::vector<VkPipeline> compute_pipelines;
 VkPipelineCache compute_pipeline_cache;
 void* compute_pipeline_cache_data;
 VkPipelineLayout compute_pipeline_layout;
+std::vector<VkDescriptorSetLayout> descriptor_set_layouts;
 
 const std::string logfile = "vulture.log";
 
@@ -1383,6 +1387,40 @@ void create_shader(const std::string& filename)
 	      << std::endl;
 }
 
+void create_descriptor_set_layouts()
+{
+  descriptor_set_layouts.resize(DESCRIPTOR_SET_COUNT);
+
+  for (unsigned int i = 0; i != DESCRIPTOR_SET_COUNT; i++) {
+    VkDescriptorSetLayoutCreateInfo create_info = {};
+    create_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+    create_info.pNext = nullptr;
+    create_info.flags = 0;
+    VkDescriptorSetLayoutBinding layout_binding = {};
+    layout_binding.binding = 0;
+    layout_binding.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER;
+    layout_binding.descriptorCount = static_cast<uint32_t>(BUFFER_COUNT);
+    layout_binding.stageFlags = VK_SHADER_STAGE_ALL;
+    layout_binding.pImmutableSamplers = nullptr;
+    create_info.bindingCount = 1;
+    create_info.pBindings = &layout_binding;
+
+    std::cout << "Creating descriptor set layout " << (i+1)
+	      << "/" << DESCRIPTOR_SET_COUNT << "..." << std::endl;
+    res = vkCreateDescriptorSetLayout(device,
+				      &create_info,
+				      CUSTOM_ALLOCATOR ? &alloc_callbacks : nullptr,
+				      &descriptor_set_layouts[i]);
+    if (res == VK_SUCCESS)
+      std::cout << "Descriptor set layout " << (i+1)
+		<< "/" << DESCRIPTOR_SET_COUNT
+		<< " created successfully!" << std::endl;
+    else
+      std::cout << "Failed to create descriptor set layout " << (i+1)
+		<< "/" << DESCRIPTOR_SET_COUNT << "..." << std::endl;
+  }
+}
+
 void create_compute_pipeline_cache()
 {
   std::vector<VkPipelineCache> subcaches(COMPUTE_PIPELINE_COUNT);
@@ -1473,8 +1511,9 @@ void create_compute_pipeline_layout()
   create_info.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
   create_info.pNext = nullptr;
   create_info.flags = 0;
-  create_info.setLayoutCount = 0;
-  create_info.pSetLayouts = nullptr;
+  create_info.setLayoutCount =
+    static_cast<uint32_t>(descriptor_set_layouts.size());
+  create_info.pSetLayouts = descriptor_set_layouts.data();
   create_info.pushConstantRangeCount = 0;
   create_info.pPushConstantRanges = nullptr;
 
@@ -1647,6 +1686,23 @@ void destroy_compute_pipeline_cache()
   vkDestroyPipelineCache(device,
 			 compute_pipeline_cache,
 			 CUSTOM_ALLOCATOR ? &alloc_callbacks : nullptr);
+}
+
+void destroy_descriptor_set_layouts()
+{
+  std::vector<std::unique_lock<std::mutex>> locks;
+  for (auto& mut : descriptor_set_layout_mutex)
+    locks.emplace_back(mut, std::defer_lock);
+
+  for (unsigned int i = 0; i != DESCRIPTOR_SET_COUNT; i++) {
+    std::cout << "Destroying descriptor set layout " << (i+1)
+	      << "/" << DESCRIPTOR_SET_COUNT << "..." << std::endl;
+    locks[i].lock();
+    vkDestroyDescriptorSetLayout(device,
+				 descriptor_set_layouts[i],
+				 CUSTOM_ALLOCATOR ? &alloc_callbacks : nullptr);
+    locks[i].unlock();
+  }
 }
 
 void destroy_shader()
@@ -2084,6 +2140,8 @@ int main(int argc, const char* argv[])
 
   create_shader("shaders/simple.comp.spv");
 
+  create_descriptor_set_layouts();
+
   create_compute_pipeline_cache();
   create_compute_pipeline_layout();
   create_compute_pipelines();
@@ -2111,6 +2169,8 @@ int main(int argc, const char* argv[])
   destroy_compute_pipelines();
   destroy_compute_pipeline_layout();
   destroy_compute_pipeline_cache();
+
+  destroy_descriptor_set_layouts();
 
   destroy_shader();
 
