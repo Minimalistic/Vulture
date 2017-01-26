@@ -105,6 +105,7 @@ std::mutex compute_pipeline_cache_mutex;
 std::mutex compute_pipeline_cache_data_mutex;
 std::mutex compute_pipeline_layout_mutex;
 std::vector<std::mutex> descriptor_set_layout_mutex(DESCRIPTOR_SET_COUNT);
+std::mutex descriptor_pool_mutex;
 
 allocator my_alloc = {};
 
@@ -146,6 +147,7 @@ VkPipelineCache compute_pipeline_cache;
 void* compute_pipeline_cache_data;
 VkPipelineLayout compute_pipeline_layout;
 std::vector<VkDescriptorSetLayout> descriptor_set_layouts;
+VkDescriptorPool descriptor_pool;
 
 const std::string logfile = "vulture.log";
 
@@ -1398,7 +1400,8 @@ void create_descriptor_set_layouts()
     create_info.flags = 0;
     VkDescriptorSetLayoutBinding layout_binding = {};
     layout_binding.binding = 0;
-    layout_binding.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER;
+    layout_binding.descriptorType =
+      VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
     layout_binding.descriptorCount = static_cast<uint32_t>(BUFFER_COUNT);
     layout_binding.stageFlags = VK_SHADER_STAGE_ALL;
     layout_binding.pImmutableSamplers = nullptr;
@@ -1420,7 +1423,6 @@ void create_descriptor_set_layouts()
 		<< "/" << DESCRIPTOR_SET_COUNT << "..." << std::endl;
   }
 }
-
 void create_compute_pipeline_cache()
 {
   std::vector<VkPipelineCache> subcaches(COMPUTE_PIPELINE_COUNT);
@@ -1575,6 +1577,32 @@ void create_compute_pipelines()
 	      << std::endl;
 }
 
+void create_descriptor_pool()
+{
+  VkDescriptorPoolCreateInfo create_info = {};
+  create_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+  create_info.pNext = nullptr;
+  create_info.flags = 0;
+  create_info.maxSets = static_cast<uint32_t>(DESCRIPTOR_SET_COUNT);
+  std::vector<VkDescriptorPoolSize> pool_sizes(DESCRIPTOR_SET_COUNT);
+  for (unsigned int i = 0; i != DESCRIPTOR_SET_COUNT; i++) {
+    pool_sizes[i].type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+    pool_sizes[i].descriptorCount = BUFFER_COUNT;
+  }
+  create_info.poolSizeCount = static_cast<uint32_t>(pool_sizes.size());
+  create_info.pPoolSizes = pool_sizes.data();
+
+  std::cout << "Creating descriptor pool..." << std::endl;
+  res = vkCreateDescriptorPool(device,
+			       &create_info,
+			       CUSTOM_ALLOCATOR ? &alloc_callbacks : nullptr,
+			       &descriptor_pool);
+  if (res == VK_SUCCESS)
+    std::cout << "Descriptor pool create successfully!" << std::endl;
+  else
+    std::cout << "Failed to create descriptor pool..." << std::endl;
+}
+
 void record_bind_compute_pipeline(uint32_t pipeline_idx,
 				  uint32_t command_buf_idx)
 {
@@ -1650,6 +1678,15 @@ void next_swapchain_image()
 	      << cur_swapchain_img << "!" << std::endl;
   else
     std::cout << "Failed to get next swapchain image..." << std::endl;
+}
+
+void destroy_descriptor_pool()
+{
+  std::cout << "Destroying descriptor pool..." << std::endl;
+  std::lock_guard<std::mutex> lock(descriptor_pool_mutex);
+  vkDestroyDescriptorPool(device,
+			  descriptor_pool,
+			  CUSTOM_ALLOCATOR ? &alloc_callbacks : nullptr);
 }
 
 void destroy_compute_pipelines()
@@ -2146,6 +2183,8 @@ int main(int argc, const char* argv[])
   create_compute_pipeline_layout();
   create_compute_pipelines();
 
+  create_descriptor_pool();
+
   begin_recording(COMMAND_BUFFER_COMPUTE);
   uint32_t compute_pipeline_idx = 0;
   record_bind_compute_pipeline(compute_pipeline_idx,
@@ -2165,6 +2204,8 @@ int main(int argc, const char* argv[])
   // Cleanup
   wait_for_device();
   destroy_swapchain();
+
+  destroy_descriptor_pool();
 
   destroy_compute_pipelines();
   destroy_compute_pipeline_layout();
