@@ -106,6 +106,7 @@ std::mutex compute_pipeline_cache_data_mutex;
 std::mutex compute_pipeline_layout_mutex;
 std::vector<std::mutex> descriptor_set_layout_mutex(DESCRIPTOR_SET_COUNT);
 std::mutex descriptor_pool_mutex;
+std::vector<std::mutex> descriptor_set_mutex(DESCRIPTOR_SET_COUNT);
 
 allocator my_alloc = {};
 
@@ -148,6 +149,7 @@ void* compute_pipeline_cache_data;
 VkPipelineLayout compute_pipeline_layout;
 std::vector<VkDescriptorSetLayout> descriptor_set_layouts;
 VkDescriptorPool descriptor_pool;
+std::vector<VkDescriptorSet> descriptor_sets;
 
 const std::string logfile = "vulture.log";
 
@@ -1582,7 +1584,7 @@ void create_descriptor_pool()
   VkDescriptorPoolCreateInfo create_info = {};
   create_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
   create_info.pNext = nullptr;
-  create_info.flags = 0;
+  create_info.flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;
   create_info.maxSets = static_cast<uint32_t>(DESCRIPTOR_SET_COUNT);
   std::vector<VkDescriptorPoolSize> pool_sizes(DESCRIPTOR_SET_COUNT);
   for (unsigned int i = 0; i != DESCRIPTOR_SET_COUNT; i++) {
@@ -1601,6 +1603,34 @@ void create_descriptor_pool()
     std::cout << "Descriptor pool create successfully!" << std::endl;
   else
     std::cout << "Failed to create descriptor pool..." << std::endl;
+}
+
+void allocate_descriptor_sets()
+{
+  std::lock_guard<std::mutex> lock(descriptor_pool_mutex);
+    
+  VkDescriptorSetAllocateInfo alloc_info = {};
+  alloc_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+  alloc_info.pNext = nullptr;
+  alloc_info.descriptorPool = descriptor_pool;
+  alloc_info.descriptorSetCount = DESCRIPTOR_SET_COUNT;
+  alloc_info.pSetLayouts = descriptor_set_layouts.data();
+  
+  std::cout << "Allocating " << DESCRIPTOR_SET_COUNT << " descriptor set"
+	    << (DESCRIPTOR_SET_COUNT != 1 ? "s" : "") << "..."
+	    << std::endl;  
+  descriptor_sets.resize(DESCRIPTOR_SET_COUNT);
+  res = vkAllocateDescriptorSets(device,
+				 &alloc_info,
+				 descriptor_sets.data());
+  if (res == VK_SUCCESS)
+    std::cout << "Allocated " << DESCRIPTOR_SET_COUNT << " descriptor set"
+	      << (DESCRIPTOR_SET_COUNT != 1 ? "s" : "") << " successfully!"
+	      << std::endl;
+  else
+    std::cout << "Failed to allocate descriptor set"
+	      << (DESCRIPTOR_SET_COUNT != 1 ? "s" : "") << "..."
+	      << std::endl;
 }
 
 void record_bind_compute_pipeline(uint32_t pipeline_idx,
@@ -1678,6 +1708,34 @@ void next_swapchain_image()
 	      << cur_swapchain_img << "!" << std::endl;
   else
     std::cout << "Failed to get next swapchain image..." << std::endl;
+}
+
+void free_descriptor_sets()
+{
+  std::lock_guard<std::mutex> lock(descriptor_pool_mutex);
+  std::vector<std::unique_lock<std::mutex>> locks;
+  for (unsigned int i = 0; i != DESCRIPTOR_SET_COUNT; i++) {
+    locks.emplace_back(descriptor_set_mutex[i], std::defer_lock);
+    locks[i].lock();
+  }
+  
+  std::cout << "Freeing " << DESCRIPTOR_SET_COUNT << " descriptor set"
+	    << (DESCRIPTOR_SET_COUNT != 1 ? "s" : "") << "..."
+	    << std::endl;
+  res = vkFreeDescriptorSets(device,
+			     descriptor_pool,
+			     DESCRIPTOR_SET_COUNT,
+			     descriptor_sets.data());
+  if (res == VK_SUCCESS)
+    std::cout << "Descriptor set" << (DESCRIPTOR_SET_COUNT != 1 ? "s" : "")
+	      << " freed successfully!" << std::endl;
+  else
+    std::cout << "Failed to free descriptor set"
+	      << (DESCRIPTOR_SET_COUNT != 1 ? "s" : "") << "..."
+	      << std::endl;
+  
+  for (auto& lck : locks)
+    lck.unlock();
 }
 
 void destroy_descriptor_pool()
@@ -2185,6 +2243,8 @@ int main(int argc, const char* argv[])
 
   create_descriptor_pool();
 
+  allocate_descriptor_sets();
+
   begin_recording(COMMAND_BUFFER_COMPUTE);
   uint32_t compute_pipeline_idx = 0;
   record_bind_compute_pipeline(compute_pipeline_idx,
@@ -2204,6 +2264,8 @@ int main(int argc, const char* argv[])
   // Cleanup
   wait_for_device();
   destroy_swapchain();
+
+  free_descriptor_sets();
 
   destroy_descriptor_pool();
 
