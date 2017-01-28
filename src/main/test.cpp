@@ -59,6 +59,8 @@ Window window;
 
 #define DESCRIPTOR_SET_COUNT            1
 
+#define DESCRIPTOR_SET_BINDING_BUFFER   0
+
 #define MAX_QUEUES                      64
 
 #define READ_OFFSET                     0
@@ -451,7 +453,8 @@ void create_buffers()
     buf_create_infos[i].size = 1024*1024;
     buf_create_infos[i].usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT
       | VK_BUFFER_USAGE_TRANSFER_DST_BIT
-      | VK_BUFFER_USAGE_UNIFORM_TEXEL_BUFFER_BIT;
+      | VK_BUFFER_USAGE_UNIFORM_TEXEL_BUFFER_BIT
+      | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
     buf_create_infos[i].sharingMode = VK_SHARING_MODE_EXCLUSIVE;
     buf_create_infos[i].queueFamilyIndexCount = 0;
     buf_create_infos[i].pQueueFamilyIndices = nullptr;
@@ -1401,7 +1404,7 @@ void create_descriptor_set_layouts()
     create_info.pNext = nullptr;
     create_info.flags = 0;
     VkDescriptorSetLayoutBinding layout_binding = {};
-    layout_binding.binding = 0;
+    layout_binding.binding = DESCRIPTOR_SET_BINDING_BUFFER;
     layout_binding.descriptorType =
       VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
     layout_binding.descriptorCount = static_cast<uint32_t>(BUFFER_COUNT);
@@ -1631,6 +1634,48 @@ void allocate_descriptor_sets()
     std::cout << "Failed to allocate descriptor set"
 	      << (DESCRIPTOR_SET_COUNT != 1 ? "s" : "") << "..."
 	      << std::endl;
+}
+
+void update_descriptor_sets()
+{
+  std::vector<std::unique_lock<std::mutex>> locks;
+  for (unsigned int i = 0; i != DESCRIPTOR_SET_COUNT; i++) {
+    locks.emplace_back(descriptor_set_mutex[i], std::defer_lock);
+    locks[i].lock();
+  }
+  
+  std::vector<VkDescriptorBufferInfo> buffer_info(BUFFER_COUNT);
+  for (unsigned int j = 0; j != BUFFER_COUNT; j++) {
+    buffer_info[j].buffer = buffers[j];
+    buffer_info[j].offset = 0;
+    buffer_info[j].range = VK_WHOLE_SIZE;
+  }
+
+  std::vector<VkWriteDescriptorSet> writes(DESCRIPTOR_SET_COUNT);
+  for (unsigned int i = 0; i != DESCRIPTOR_SET_COUNT; i++) {
+    writes[i].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    writes[i].pNext = nullptr;
+    writes[i].dstSet = descriptor_sets[i];
+    writes[i].dstBinding = DESCRIPTOR_SET_BINDING_BUFFER;
+    writes[i].dstArrayElement = 0;
+    writes[i].descriptorCount = BUFFER_COUNT;
+    writes[i].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+    writes[i].pImageInfo = nullptr;
+    writes[i].pBufferInfo = buffer_info.data();
+    writes[i].pTexelBufferView = nullptr;
+  }
+
+  std::cout << "Updating " << DESCRIPTOR_SET_COUNT
+	    << " descriptor set"
+	    << (DESCRIPTOR_SET_COUNT != 1 ? "s..." : "...")
+	    << std::endl;
+  vkUpdateDescriptorSets(device,
+			 static_cast<uint32_t>(writes.size()),
+			 writes.data(),
+			 0, nullptr);
+
+  for (unsigned int i = 0; i != DESCRIPTOR_SET_COUNT; i++)
+    locks[i].unlock();
 }
 
 void record_bind_compute_pipeline(uint32_t pipeline_idx,
@@ -2244,6 +2289,8 @@ int main(int argc, const char* argv[])
   create_descriptor_pool();
 
   allocate_descriptor_sets();
+
+  update_descriptor_sets();
 
   begin_recording(COMMAND_BUFFER_COMPUTE);
   uint32_t compute_pipeline_idx = 0;
