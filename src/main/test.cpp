@@ -1691,6 +1691,22 @@ void record_bind_compute_pipeline(uint32_t pipeline_idx,
 		    compute_pipelines[pipeline_idx]);
 }
 
+void record_bind_descriptor_sets(uint32_t command_buf_idx)
+{
+  std::cout << "Recording bind " << DESCRIPTOR_SET_COUNT
+	    << " descriptor set" << (DESCRIPTOR_SET_COUNT != 1 ? "s" : "")
+	    << " to command buffer " << command_buf_idx << "..."
+	    << std::endl;
+  vkCmdBindDescriptorSets(command_buffers[command_buf_idx],
+			  VK_PIPELINE_BIND_POINT_COMPUTE,
+			  compute_pipeline_layout,
+			  0,
+			  static_cast<uint32_t>(descriptor_sets.size()),
+			  descriptor_sets.data(),
+			  0,
+			  nullptr);
+}
+
 void record_dispatch_compute_pipeline(uint32_t command_buf_idx)
 {
   std::lock_guard<std::mutex> buf_lock(command_buffer_mutex[command_buf_idx]);
@@ -2292,10 +2308,11 @@ int main(int argc, const char* argv[])
 
   update_descriptor_sets();
 
-  begin_recording(COMMAND_BUFFER_COMPUTE);
   uint32_t compute_pipeline_idx = 0;
+  begin_recording(COMMAND_BUFFER_COMPUTE);
   record_bind_compute_pipeline(compute_pipeline_idx,
 			       COMMAND_BUFFER_COMPUTE);
+  record_bind_descriptor_sets(COMMAND_BUFFER_COMPUTE);
   record_dispatch_compute_pipeline(COMMAND_BUFFER_COMPUTE);
   end_recording(COMMAND_BUFFER_COMPUTE);
 
