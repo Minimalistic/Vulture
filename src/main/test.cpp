@@ -1693,6 +1693,8 @@ void record_bind_compute_pipeline(uint32_t pipeline_idx,
 
 void record_bind_descriptor_sets(uint32_t command_buf_idx)
 {
+  std::lock_guard<std::mutex> buf_lock(command_buffer_mutex[command_buf_idx]);
+  std::lock_guard<std::mutex> pool_lock(command_pool_mutex);
   std::cout << "Recording bind " << DESCRIPTOR_SET_COUNT
 	    << " descriptor set" << (DESCRIPTOR_SET_COUNT != 1 ? "s" : "")
 	    << " to command buffer " << command_buf_idx << "..."
