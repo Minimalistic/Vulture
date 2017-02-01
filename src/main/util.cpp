@@ -63,7 +63,7 @@ void print_all_buffers(VkDevice device,
 		       VkDeviceSize length,
 		       const std::vector<VkMemoryRequirements>& buf_mem_reqs)
 {
-  int cur_offset = offset;
+  VkDeviceSize cur_offset = offset;
   for (unsigned int i = 0; i != buf_mem_reqs.size(); i++) {
     std::cout << "Buffer " << i << " (offset=" << offset << ", len="
 	      << length << "): ";
