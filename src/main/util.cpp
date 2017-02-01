@@ -56,6 +56,26 @@ void print_mem(VkDevice device,
   vkUnmapMemory(device, memory);
 }
 
+void print_all_buffers(VkDevice device,
+		       VkDeviceMemory memory,
+		       std::mutex& mem_mutex,
+		       VkDeviceSize offset,
+		       VkDeviceSize length,
+		       const std::vector<VkMemoryRequirements>& buf_mem_reqs)
+{
+  int cur_offset = offset;
+  for (unsigned int i = 0; i != buf_mem_reqs.size(); i++) {
+    std::cout << "Buffer " << i << " (offset=" << offset << ", len="
+	      << length << "): ";
+    print_mem(device,
+	      memory,
+	      mem_mutex,
+	      cur_offset,
+	      length);
+    cur_offset += buf_mem_reqs[i].size;
+  }
+}
+
 uint32_t make_data(const char* str)
 {
   if (strlen(str) != 4) {

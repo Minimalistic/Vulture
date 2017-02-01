@@ -2,8 +2,15 @@
 
 layout (local_size_x = 4, local_size_y = 5, local_size_z = 6) in;
 
+layout (std430, set = 0, binding = 0) buffer SBO
+{
+	uint data[];
+} sbo[13];
+
 void main(void)
 {
-	// Do nothing
+	for (int i = 0; i != 13; i++) {
+		sbo[i].data[0] = 87+(88<<8)+(89<<16)+(90<<24); // WXYZ
+	}
 }
 

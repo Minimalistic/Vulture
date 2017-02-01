@@ -2310,6 +2310,14 @@ int main(int argc, const char* argv[])
 
   update_descriptor_sets();
 
+  std::cout << "Before submit:" << std::endl;
+  print_all_buffers(device,
+		    memory[RESOURCE_BUFFER],
+		    memory_mutex[RESOURCE_BUFFER],
+		    READ_OFFSET,
+		    READ_LENGTH,
+		    buf_mem_requirements);
+
   uint32_t compute_pipeline_idx = 0;
   begin_recording(COMMAND_BUFFER_COMPUTE);
   record_bind_compute_pipeline(compute_pipeline_idx,
@@ -2321,6 +2329,14 @@ int main(int argc, const char* argv[])
   submit_to_queue(COMMAND_BUFFER_COMPUTE, submit_queue_idx);
   wait_for_queue(submit_queue_idx);
   reset_command_buffer(COMMAND_BUFFER_COMPUTE);
+
+  std::cout << "After submit:" << std::endl;
+  print_all_buffers(device,
+		    memory[RESOURCE_BUFFER],
+		    memory_mutex[RESOURCE_BUFFER],
+		    READ_OFFSET,
+		    READ_LENGTH,
+		    buf_mem_requirements);
 
   fetch_compute_pipeline_cache_data();
   delete_compute_pipeline_cache_data();
