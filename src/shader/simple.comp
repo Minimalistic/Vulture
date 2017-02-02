@@ -1,16 +1,23 @@
-#version 450 core
-
 layout (local_size_x = 4, local_size_y = 5, local_size_z = 6) in;
+
+layout (push_constant) uniform push_constants_t
+{
+	uint val1;
+	uint val2;
+} my_constants;
 
 layout (std430, set = 0, binding = 0) buffer SBO
 {
 	uint data[];
-} sbo[13];
+} sbo[BUFFER_COUNT];
 
 void main(void)
 {
-	for (int i = 0; i != 13; i++) {
-		sbo[i].data[0] = 87+(88<<8)+(89<<16)+(90<<24); // WXYZ
+	for (int i = 0; i != BUFFER_COUNT; i++) {
+	    if (i % 2 == 0)
+		sbo[i].data[0] = my_constants.val1;
+	    else
+		sbo[i].data[0] = my_constants.val2;
 	}
 }
 

@@ -48,10 +48,6 @@ Window window;
 #define RESOURCE_BUFFER                 0
 #define RESOURCE_IMAGE                  1
 
-#define BUFFER_COUNT                    13
-#define IMAGE_COUNT                     21
-#define COMMAND_BUFFER_COUNT            5
-
 #define COMMAND_BUFFER_COMPUTE          0
 #define COMMAND_BUFFER_GRAPHICS         1
 
@@ -117,6 +113,7 @@ uint32_t queue_family_idx;
 uint32_t queue_family_queue_count;
 uint32_t mem_types[2] = {UINT32_MAX, UINT32_MAX};
 uint32_t cur_swapchain_img;
+uint32_t push_constants[2] = {make_data("LMAO"), make_data("XDXD")};
 
 VkResult res;
 VkInstance inst;
@@ -1521,8 +1518,14 @@ void create_compute_pipeline_layout()
   create_info.setLayoutCount =
     static_cast<uint32_t>(descriptor_set_layouts.size());
   create_info.pSetLayouts = descriptor_set_layouts.data();
-  create_info.pushConstantRangeCount = 0;
-  create_info.pPushConstantRanges = nullptr;
+
+  VkPushConstantRange range;
+  range.stageFlags = VK_SHADER_STAGE_ALL;
+  range.offset = 0;
+  range.size = sizeof(push_constants);
+
+  create_info.pushConstantRangeCount = 1;
+  create_info.pPushConstantRanges = &range;
 
   std::cout << "Creating compute pipeline layout..."
 	    << std::endl;
@@ -1707,6 +1710,20 @@ void record_bind_descriptor_sets(uint32_t command_buf_idx)
 			  descriptor_sets.data(),
 			  0,
 			  nullptr);
+}
+
+void record_push_constants(uint32_t command_buf_idx)
+{
+  std::lock_guard<std::mutex> buf_lock(command_buffer_mutex[command_buf_idx]);
+  std::lock_guard<std::mutex> pool_lock(command_pool_mutex);
+  std::cout << "Recording push constants to command buffer "
+	    << command_buf_idx << "..." << std::endl;
+  vkCmdPushConstants(command_buffers[command_buf_idx],
+		     compute_pipeline_layout,
+		     VK_SHADER_STAGE_ALL,
+		     0,
+		     sizeof(push_constants),
+		     push_constants);
 }
 
 void record_dispatch_compute_pipeline(uint32_t command_buf_idx)
@@ -2323,6 +2340,7 @@ int main(int argc, const char* argv[])
   record_bind_compute_pipeline(compute_pipeline_idx,
 			       COMMAND_BUFFER_COMPUTE);
   record_bind_descriptor_sets(COMMAND_BUFFER_COMPUTE);
+  record_push_constants(COMMAND_BUFFER_COMPUTE);
   record_dispatch_compute_pipeline(COMMAND_BUFFER_COMPUTE);
   end_recording(COMMAND_BUFFER_COMPUTE);
 
