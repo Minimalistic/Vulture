@@ -105,6 +105,7 @@ std::mutex compute_pipeline_layout_mutex;
 std::vector<std::mutex> descriptor_set_layout_mutex(DESCRIPTOR_SET_COUNT);
 std::mutex descriptor_pool_mutex;
 std::vector<std::mutex> descriptor_set_mutex(DESCRIPTOR_SET_COUNT);
+std::mutex image_sampler_mutex;
 
 allocator my_alloc = {};
 
@@ -149,6 +150,7 @@ VkPipelineLayout compute_pipeline_layout;
 std::vector<VkDescriptorSetLayout> descriptor_set_layouts;
 VkDescriptorPool descriptor_pool;
 std::vector<VkDescriptorSet> descriptor_sets;
+VkSampler image_sampler;
 
 const std::string logfile = "vulture.log";
 
@@ -1639,6 +1641,38 @@ void allocate_descriptor_sets()
 	      << std::endl;
 }
 
+void create_image_sampler()
+{
+  VkSamplerCreateInfo create_info = {};
+  create_info.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
+  create_info.pNext = nullptr;
+  create_info.flags = 0;
+  create_info.magFilter = VK_FILTER_NEAREST;
+  create_info.minFilter = VK_FILTER_NEAREST;
+  create_info.mipmapMode = VK_SAMPLER_MIPMAP_MODE_NEAREST;
+  create_info.addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+  create_info.addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+  create_info.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+  create_info.mipLodBias = 0.0;
+  create_info.anisotropyEnable = VK_FALSE;
+  create_info.compareEnable = VK_FALSE;
+  create_info.compareOp = VK_COMPARE_OP_NEVER;
+  create_info.minLod = 0.0;
+  create_info.maxLod = 0.25;
+  create_info.borderColor = VK_BORDER_COLOR_FLOAT_TRANSPARENT_BLACK;
+  create_info.unnormalizedCoordinates = VK_FALSE;
+
+  std::cout << "Creating image sampler..." << std::endl;
+  res = vkCreateSampler(device,
+			&create_info,
+			CUSTOM_ALLOCATOR ? &alloc_callbacks : nullptr,
+			&image_sampler);
+  if (res == VK_SUCCESS)
+    std::cout << "Image sampler created successfully!" << std::endl;
+  else
+    std::cout << "Failed to create image sampler..." << std::endl;
+}
+
 void update_descriptor_sets()
 {
   std::vector<std::unique_lock<std::mutex>> locks;
@@ -1788,6 +1822,15 @@ void next_swapchain_image()
 	      << cur_swapchain_img << "!" << std::endl;
   else
     std::cout << "Failed to get next swapchain image..." << std::endl;
+}
+
+void destroy_image_sampler()
+{
+  std::lock_guard<std::mutex> lock(image_sampler_mutex);
+  std::cout << "Destroying image sampler..." << std::endl;
+  vkDestroySampler(device,
+		   image_sampler,
+		   CUSTOM_ALLOCATOR ? &alloc_callbacks : nullptr);
 }
 
 void free_descriptor_sets()
@@ -2325,6 +2368,8 @@ int main(int argc, const char* argv[])
 
   allocate_descriptor_sets();
 
+  create_image_sampler();
+
   update_descriptor_sets();
 
   std::cout << "Before submit:" << std::endl;
@@ -2364,6 +2409,8 @@ int main(int argc, const char* argv[])
   // Cleanup
   wait_for_device();
   destroy_swapchain();
+
+  destroy_image_sampler();
 
   free_descriptor_sets();
 
