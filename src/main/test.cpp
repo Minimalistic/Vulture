@@ -106,6 +106,7 @@ std::vector<std::mutex> descriptor_set_layout_mutex(DESCRIPTOR_SET_COUNT);
 std::mutex descriptor_pool_mutex;
 std::vector<std::mutex> descriptor_set_mutex(DESCRIPTOR_SET_COUNT);
 std::mutex image_sampler_mutex;
+std::mutex renderpass_mutex;
 
 allocator my_alloc = {};
 
@@ -151,6 +152,7 @@ std::vector<VkDescriptorSetLayout> descriptor_set_layouts;
 VkDescriptorPool descriptor_pool;
 std::vector<VkDescriptorSet> descriptor_sets;
 VkSampler image_sampler;
+VkRenderPass renderpass;
 
 const std::string logfile = "vulture.log";
 
@@ -1808,6 +1810,65 @@ void delete_compute_pipeline_cache_data()
   free(compute_pipeline_cache_data);
 }
 
+void create_renderpass()
+{
+  std::vector<VkAttachmentDescription> attachments;
+  VkAttachmentDescription color_attachment = {};
+  color_attachment.flags = 0;
+  color_attachment.format = VK_FORMAT_R8G8B8A8_UNORM;
+  color_attachment.samples = VK_SAMPLE_COUNT_1_BIT;
+  color_attachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+  color_attachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+  color_attachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+  color_attachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+  color_attachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+  color_attachment.finalLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+  attachments.push_back(color_attachment);
+
+  std::vector<VkAttachmentReference> attachment_references;
+  VkAttachmentReference color_attachment_reference = {};
+  color_attachment_reference.attachment = 0;
+  color_attachment_reference.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+  attachment_references.push_back(color_attachment_reference);
+
+  std::vector<VkSubpassDescription> subpasses;
+  VkSubpassDescription subpass = {};
+  subpass.flags = 0;
+  subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
+  subpass.inputAttachmentCount = 0;
+  subpass.pInputAttachments = nullptr;
+  subpass.colorAttachmentCount =
+    static_cast<uint32_t>(attachment_references.size());
+  subpass.pColorAttachments =
+    attachment_references.data();
+  subpass.pResolveAttachments = nullptr;
+  subpass.pDepthStencilAttachment = nullptr;
+  subpass.preserveAttachmentCount = 0;
+  subpass.pPreserveAttachments = nullptr;
+  subpasses.push_back(subpass);
+
+  VkRenderPassCreateInfo create_info = {};
+  create_info.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
+  create_info.pNext = nullptr;
+  create_info.flags = 0;
+  create_info.attachmentCount = static_cast<uint32_t>(attachments.size());
+  create_info.pAttachments = attachments.data();
+  create_info.subpassCount = static_cast<uint32_t>(subpasses.size());
+  create_info.pSubpasses = subpasses.data();
+  create_info.dependencyCount = 0;
+  create_info.pDependencies = nullptr;
+
+  std::cout << "Creating renderpass..." << std::endl;
+  res = vkCreateRenderPass(device,
+			   &create_info,
+			   CUSTOM_ALLOCATOR ? &alloc_callbacks : nullptr,
+			   &renderpass);
+  if (res == VK_SUCCESS)
+    std::cout << "Renderpass created successfully!" << std::endl;
+  else
+    std::cout << "Failed to create renderpass..." << std::endl;
+}
+
 void next_swapchain_image()
 {
   std::cout << "Acquiring next swapchain image..." << std::endl;
@@ -1822,6 +1883,15 @@ void next_swapchain_image()
 	      << cur_swapchain_img << "!" << std::endl;
   else
     std::cout << "Failed to get next swapchain image..." << std::endl;
+}
+
+void destroy_renderpass()
+{
+  std::lock_guard<std::mutex> lock(renderpass_mutex);
+  std::cout << "Destroying renderpass..." << std::endl;
+  vkDestroyRenderPass(device,
+		      renderpass,
+		      CUSTOM_ALLOCATOR ? &alloc_callbacks : nullptr);
 }
 
 void destroy_image_sampler()
@@ -2404,11 +2474,15 @@ int main(int argc, const char* argv[])
   fetch_compute_pipeline_cache_data();
   delete_compute_pipeline_cache_data();
 
+  create_renderpass();
+
   next_swapchain_image();
 
   // Cleanup
   wait_for_device();
   destroy_swapchain();
+
+  destroy_renderpass();
 
   destroy_image_sampler();
 
