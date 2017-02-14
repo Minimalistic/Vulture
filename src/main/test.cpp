@@ -84,6 +84,7 @@ std::string platform;
 
 std::mutex device_mutex;
 std::mutex instance_mutex;
+std::mutex debug_report_callback_mutex;
 std::vector<std::mutex> resource_mutex[2] =
   {std::vector<std::mutex>(BUFFER_COUNT),
    std::vector<std::mutex>(IMAGE_COUNT)};
@@ -124,6 +125,7 @@ std::vector<VkPhysicalDevice> physical_devices;
 VkPhysicalDeviceMemoryProperties physical_device_mem_props;
 std::vector<VkQueueFamilyProperties> queue_family_properties;
 VkDevice device;
+VkDebugReportCallbackEXT debug_report_callback;
 std::vector<VkBuffer> buffers;
 std::vector<VkImage> images;
 std::vector<VkSubresourceLayout> subresource_layouts;
@@ -155,6 +157,7 @@ VkSampler image_sampler;
 VkRenderPass renderpass;
 
 const std::string logfile = "vulture.log";
+const std::string errfile = "vulture.err";
 
 #ifdef VK_USE_PLATFORM_WIN32_KHR
 LRESULT CALLBACK WndProc(HWND hwnd,
@@ -165,6 +168,20 @@ LRESULT CALLBACK WndProc(HWND hwnd,
   return DefWindowProc(hwnd,uMsg,wParam,lParam);
 }
 #endif
+
+VKAPI_ATTR VkBool32 VKAPI_CALL MyDebugReportCallback(
+    VkDebugReportFlagsEXT       flags,
+    VkDebugReportObjectTypeEXT  objectType,
+    uint64_t                    object,
+    size_t                      location,
+    int32_t                     messageCode,
+    const char*                 pLayerPrefix,
+    const char*                 pMessage,
+    void*                       pUserData)
+{
+    std::cerr << pMessage << std::endl;
+    return VK_FALSE;
+}
 
 void get_platform()
 {
@@ -262,8 +279,11 @@ void create_instance()
   inst_info.pNext = nullptr;
   inst_info.flags = 0;
   inst_info.pApplicationInfo = &app_info;
-  inst_info.enabledExtensionCount = 2;
+  inst_info.enabledExtensionCount = ENABLE_STANDARD_VALIDATION ? 3 : 2;
   const char* enabled_extension_names[] = {
+#if ENABLE_STANDARD_VALIDATION
+    "VK_EXT_debug_report",
+#endif
 #ifdef VK_USE_PLATFORM_WIN32_KHR
     "VK_KHR_win32_surface",
 #elif USE_XCB
@@ -422,8 +442,14 @@ void create_device()
   device_create_info.flags = 0;
   device_create_info.queueCreateInfoCount = 1;
   device_create_info.pQueueCreateInfos = device_queue_create_infos;
+#if ENABLE_STANDARD_VALIDATION
+  device_create_info.enabledLayerCount = 1;
+  const char* enabled_layer_names[] = { "VK_LAYER_LUNARG_standard_validation" };
+  device_create_info.ppEnabledLayerNames = enabled_layer_names;
+#else
   device_create_info.enabledLayerCount = 0;
   device_create_info.ppEnabledLayerNames = nullptr;
+#endif
   device_create_info.enabledExtensionCount = 1;
   const char* enabled_extension_names[] = {
     "VK_KHR_swapchain"
@@ -441,6 +467,36 @@ void create_device()
     std::cout << "Device created successfully!" << std::endl;
   else
     std::cout << "Failed to create device..." << std::endl;
+}
+
+void create_debug_report_callback()
+{
+  /* Load VK_EXT_debug_report entry points in debug builds */
+  PFN_vkCreateDebugReportCallbackEXT vkCreateDebugReportCallbackEXT =
+    reinterpret_cast<PFN_vkCreateDebugReportCallbackEXT>
+    (vkGetInstanceProcAddr(inst, "vkCreateDebugReportCallbackEXT"));
+  PFN_vkDebugReportMessageEXT vkDebugReportMessageEXT =
+    reinterpret_cast<PFN_vkDebugReportMessageEXT>
+    (vkGetInstanceProcAddr(inst, "vkDebugReportMessageEXT"));
+  
+  VkDebugReportCallbackCreateInfoEXT callbackCreateInfo;
+  callbackCreateInfo.sType       = VK_STRUCTURE_TYPE_DEBUG_REPORT_CREATE_INFO_EXT;
+  callbackCreateInfo.pNext       = nullptr;
+  callbackCreateInfo.flags       = VK_DEBUG_REPORT_ERROR_BIT_EXT |
+    VK_DEBUG_REPORT_WARNING_BIT_EXT |
+    VK_DEBUG_REPORT_PERFORMANCE_WARNING_BIT_EXT;
+  callbackCreateInfo.pfnCallback = &MyDebugReportCallback;
+  callbackCreateInfo.pUserData   = nullptr;
+
+  std::cout << "Creating debug report callback..." << std::endl;
+  res = vkCreateDebugReportCallbackEXT(inst,
+				       &callbackCreateInfo,
+				       CUSTOM_ALLOCATOR ? &alloc_callbacks : nullptr,
+				       &debug_report_callback);
+  if (res == VK_SUCCESS)
+    std::cout << "Debug report callback created successfully!" << std::endl;
+  else
+    std::cout << "Failed to create debug report callback..." << std::endl;
 }
 
 void create_buffers()
@@ -2147,6 +2203,19 @@ void wait_for_device()
     std::cout << "Wait failed: device was lost..." << std::endl;
 }
 
+void destroy_debug_report_callback()
+{
+  PFN_vkDestroyDebugReportCallbackEXT vkDestroyDebugReportCallbackEXT =
+    reinterpret_cast<PFN_vkDestroyDebugReportCallbackEXT>
+    (vkGetInstanceProcAddr(inst, "vkDestroyDebugReportCallbackEXT"));
+
+  std::lock_guard<std::mutex> lock(debug_report_callback_mutex);
+  std::cout << "Destroying debug report callback..." << std::endl;
+  vkDestroyDebugReportCallbackEXT(inst,
+				  debug_report_callback,
+				  CUSTOM_ALLOCATOR ? &alloc_callbacks : nullptr);				  
+}
+
 void destroy_device()
 {
   std::lock_guard<std::mutex> lock(device_mutex);
@@ -2185,11 +2254,14 @@ int APIENTRY WinMain(HINSTANCE hInstance,
 int main(int argc, const char* argv[])
 #endif
 {
-  std::ofstream file;
-  std::streambuf* sbuf = std::cout.rdbuf();
+  std::ofstream lfile, efile;
+  std::streambuf* lsbuf = std::cout.rdbuf();
+  std::streambuf* esbuf = std::cerr.rdbuf();
   
-  file.open(logfile);
-  std::cout.rdbuf(file.rdbuf());
+  lfile.open(logfile);
+  std::cout.rdbuf(lfile.rdbuf());
+  efile.open(errfile);
+  std::cerr.rdbuf(efile.rdbuf());
 
   get_platform();
     
@@ -2234,7 +2306,6 @@ int main(int argc, const char* argv[])
     std::cout << "Using custom allocator..." << std::endl;
 
   create_instance();
-  
   enumerate_physical_devices();
 
   if (SHOW_PHYSICAL_DEVICE_LAYERS) {
@@ -2288,6 +2359,9 @@ int main(int argc, const char* argv[])
 
   create_device();
 
+  if (ENABLE_STANDARD_VALIDATION)
+    create_debug_report_callback();
+  
   create_buffers();
 
   create_images();
@@ -2518,6 +2592,9 @@ int main(int argc, const char* argv[])
 
   destroy_images();
 
+  if (ENABLE_STANDARD_VALIDATION)
+    destroy_debug_report_callback();
+
   wait_for_device();
   destroy_device();
   
@@ -2525,8 +2602,10 @@ int main(int argc, const char* argv[])
 
   destroy_window();
 
-  std::cout.rdbuf(sbuf);
-  file.close();
+  std::cout.rdbuf(lsbuf);
+  std::cerr.rdbuf(esbuf);
+  lfile.close();
+  efile.close();
 
   return 0;
 }
