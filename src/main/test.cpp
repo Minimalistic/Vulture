@@ -2254,14 +2254,17 @@ int APIENTRY WinMain(HINSTANCE hInstance,
 int main(int argc, const char* argv[])
 #endif
 {
-  std::ofstream lfile, efile;
+  std::ofstream lfile;
   std::streambuf* lsbuf = std::cout.rdbuf();
-  std::streambuf* esbuf = std::cerr.rdbuf();
-  
   lfile.open(logfile);
   std::cout.rdbuf(lfile.rdbuf());
+
+#if ENABLE_STANDARD_VALIDATION
+  std::ofstream efile;
+  std::streambuf* esbuf = std::cerr.rdbuf();
   efile.open(errfile);
   std::cerr.rdbuf(efile.rdbuf());
+#endif
 
   get_platform();
     
@@ -2603,9 +2606,12 @@ int main(int argc, const char* argv[])
   destroy_window();
 
   std::cout.rdbuf(lsbuf);
-  std::cerr.rdbuf(esbuf);
   lfile.close();
+
+#if ENABLE_STANDARD_VALIDATION
+  std::cerr.rdbuf(esbuf);
   efile.close();
+#endif
 
   return 0;
 }
