@@ -68,6 +68,9 @@ Window window;
 #define WINDOW_WIDTH 800
 #define WINDOW_HEIGHT 600
 
+#define BUFFER_FORMAT VK_FORMAT_R8G8B8A8_UNORM
+#define IMAGE_FORMAT  VK_FORMAT_B8G8R8A8_UNORM
+
 #ifdef VK_USE_PLATFORM_WIN32_KHR
 #define SWAPCHAIN_IMAGE_FORMAT      VK_FORMAT_B8G8R8A8_UNORM
 #define SWAPCHAIN_PRESENT_MODE      VK_PRESENT_MODE_MAILBOX_KHR
@@ -108,6 +111,7 @@ std::mutex descriptor_pool_mutex;
 std::vector<std::mutex> descriptor_set_mutex(DESCRIPTOR_SET_COUNT);
 std::mutex image_sampler_mutex;
 std::mutex renderpass_mutex;
+std::mutex framebuffer_mutex;
 
 allocator my_alloc = {};
 
@@ -155,6 +159,7 @@ VkDescriptorPool descriptor_pool;
 std::vector<VkDescriptorSet> descriptor_sets;
 VkSampler image_sampler;
 VkRenderPass renderpass;
+VkFramebuffer framebuffer;
 
 const std::string logfile = "vulture.log";
 const std::string errfile = "vulture.err";
@@ -539,20 +544,18 @@ void create_images()
     img_create_infos[i].sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
     img_create_infos[i].pNext = nullptr;
     img_create_infos[i].flags = 0;
-    img_create_infos[i].imageType = VK_IMAGE_TYPE_2D;
-    img_create_infos[i].format = VK_FORMAT_R8G8B8A8_UNORM;
+    img_create_infos[i].imageType = VK_IMAGE_TYPE_3D;
+    img_create_infos[i].format = IMAGE_FORMAT;
     VkExtent3D dimensions = {};
-    dimensions.width = 1024;
-    dimensions.height = 1024;
+    dimensions.width = WINDOW_WIDTH;
+    dimensions.height = WINDOW_HEIGHT;
     dimensions.depth = 1;
     img_create_infos[i].extent = dimensions;
     img_create_infos[i].mipLevels = 1;
     img_create_infos[i].arrayLayers = 1;
     img_create_infos[i].samples = VK_SAMPLE_COUNT_1_BIT;
-    img_create_infos[i].tiling = VK_IMAGE_TILING_LINEAR;  
-    img_create_infos[i].usage = VK_IMAGE_USAGE_SAMPLED_BIT |
-      VK_IMAGE_USAGE_TRANSFER_SRC_BIT |
-      VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+    img_create_infos[i].tiling = VK_IMAGE_TILING_OPTIMAL;
+    img_create_infos[i].usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
     img_create_infos[i].sharingMode = VK_SHARING_MODE_EXCLUSIVE;
     img_create_infos[i].queueFamilyIndexCount = 0;
     img_create_infos[i].pQueueFamilyIndices = nullptr;
@@ -633,34 +636,43 @@ void get_image_memory_requirements()
 void find_memory_types()
 {  
   for (uint32_t cur = 0;
-       cur < physical_device_mem_props.memoryTypeCount;
+       mem_types[RESOURCE_BUFFER] == UINT32_MAX
+	 && cur < physical_device_mem_props.memoryTypeCount;
        cur++) {
     VkMemoryType& mem_type = physical_device_mem_props.memoryTypes[cur];
     VkMemoryHeap& mem_heap =
       physical_device_mem_props.memoryHeaps[mem_type.heapIndex];
-    
+
+    // Buffer memory should be coherent/visible so host application
+    // can write to buffers directly. Image memory need not be
+    // coherent/visible since images will be modified using shaders
+    // (and hence by the device).
     if (mem_heap.size <= 0 ||
 	!HOST_COHERENT(mem_type.propertyFlags) ||
 	!HOST_VISIBLE(mem_type.propertyFlags))
       continue;
     
-    if (mem_types[RESOURCE_BUFFER] == UINT32_MAX &&
-	mem_size[RESOURCE_BUFFER] <= mem_heap.size &&
+    if (mem_size[RESOURCE_BUFFER] <= mem_heap.size &&
 	supports_mem_reqs(cur, buf_mem_requirements))
       mem_types[RESOURCE_BUFFER] = cur;
-    
-    if (mem_types[RESOURCE_IMAGE] == UINT32_MAX &&
-	mem_size[RESOURCE_IMAGE] <= mem_heap.size &&
-	supports_mem_reqs(cur, img_mem_requirements))
+  }
+
+  for (uint32_t cur = 0;
+       mem_types[RESOURCE_IMAGE] == UINT32_MAX
+	 && cur < physical_device_mem_props.memoryTypeCount;
+       cur++) {
+    VkMemoryType& mem_type = physical_device_mem_props.memoryTypes[cur];
+    VkMemoryHeap& mem_heap =
+      physical_device_mem_props.memoryHeaps[mem_type.heapIndex];
+
+    if (mem_size[RESOURCE_IMAGE] <= mem_heap.size &&
+	supports_mem_reqs(cur, img_mem_requirements)) {
       if (cur == mem_types[RESOURCE_BUFFER] &&
 	  mem_size[RESOURCE_BUFFER]+mem_size[RESOURCE_IMAGE] > mem_heap.size)
 	continue;
       else
 	mem_types[RESOURCE_IMAGE] = cur;
-
-    if (mem_types[RESOURCE_BUFFER] != UINT32_MAX
-	&& mem_types[RESOURCE_IMAGE] != UINT32_MAX)
-      break;
+    }
   }
 }
 
@@ -736,29 +748,6 @@ void write_buffer_memory()
 		memory[RESOURCE_BUFFER]);
 }
 
-void write_image_memory()
-{
-  void* img_data = nullptr;
-  std::cout << "Mapping image memory..." << std::endl;
-  std::lock_guard<std::mutex> lock(memory_mutex[RESOURCE_IMAGE]);
-  res = vkMapMemory(device,
-		    memory[RESOURCE_IMAGE],
-		    0,
-		    VK_WHOLE_SIZE,
-		    0,
-		    &img_data);
-  if (res == VK_SUCCESS)
-    std::cout << "Image memory mapped successfully!" << std::endl;
-  else
-    std::cout << "Failed to map image memory..." << std::endl;
-
-  // TODO: Write data to image memory
-
-  std::cout << "Unmapping image memory..." << std::endl;
-  vkUnmapMemory(device,
-		memory[RESOURCE_IMAGE]);
-}
-
 void bind_buffer_memory()
 {
   std::vector<std::unique_lock<std::mutex>> locks;
@@ -818,7 +807,7 @@ void create_buffer_views()
     buf_view_create_info.pNext = nullptr;
     buf_view_create_info.flags = 0;
     buf_view_create_info.buffer = buffers[i];
-    buf_view_create_info.format = VK_FORMAT_R8G8B8A8_UNORM;
+    buf_view_create_info.format = BUFFER_FORMAT;
     buf_view_create_info.offset = 0;
     buf_view_create_info.range = VK_WHOLE_SIZE;
 
@@ -845,8 +834,8 @@ void create_image_views()
     img_view_create_info.pNext = nullptr;
     img_view_create_info.flags = 0;
     img_view_create_info.image = images[i];
-    img_view_create_info.viewType = VK_IMAGE_VIEW_TYPE_2D;
-    img_view_create_info.format = VK_FORMAT_R8G8B8A8_UNORM;
+    img_view_create_info.viewType = VK_IMAGE_VIEW_TYPE_3D;
+    img_view_create_info.format = IMAGE_FORMAT;
     VkComponentMapping component_mapping = {};
     component_mapping.r = VK_COMPONENT_SWIZZLE_IDENTITY;
     component_mapping.g = VK_COMPONENT_SWIZZLE_IDENTITY;
@@ -1871,7 +1860,7 @@ void create_renderpass()
   std::vector<VkAttachmentDescription> attachments;
   VkAttachmentDescription color_attachment = {};
   color_attachment.flags = 0;
-  color_attachment.format = VK_FORMAT_R8G8B8A8_UNORM;
+  color_attachment.format = IMAGE_FORMAT;
   color_attachment.samples = VK_SAMPLE_COUNT_1_BIT;
   color_attachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
   color_attachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
@@ -1925,6 +1914,30 @@ void create_renderpass()
     std::cout << "Failed to create renderpass..." << std::endl;
 }
 
+void create_framebuffer()
+{
+  VkFramebufferCreateInfo create_info = {};
+  create_info.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
+  create_info.pNext = nullptr;
+  create_info.flags = 0;
+  create_info.renderPass = renderpass;
+  create_info.attachmentCount = 1;
+  create_info.pAttachments = &image_views[0];
+  create_info.width = WINDOW_WIDTH;
+  create_info.height = WINDOW_HEIGHT;
+  create_info.layers = 1;
+
+  std::cout << "Creating framebuffer..." << std::endl;
+  res = vkCreateFramebuffer(device,
+			    &create_info,
+			    CUSTOM_ALLOCATOR ? &alloc_callbacks : nullptr,
+			    &framebuffer);
+  if (res == VK_SUCCESS)
+    std::cout << "Framebuffer created successfully!" << std::endl;
+  else
+    std::cout << "Failed to create framebuffer..." << std::endl;
+}
+
 void next_swapchain_image()
 {
   std::cout << "Acquiring next swapchain image..." << std::endl;
@@ -1939,6 +1952,15 @@ void next_swapchain_image()
 	      << cur_swapchain_img << "!" << std::endl;
   else
     std::cout << "Failed to get next swapchain image..." << std::endl;
+}
+
+void destroy_framebuffer()
+{
+  std::cout << "Destroying framebuffer..." << std::endl;
+  std::lock_guard<std::mutex> lock(framebuffer_mutex);
+  vkDestroyFramebuffer(device,
+		       framebuffer,
+		       CUSTOM_ALLOCATOR ? &alloc_callbacks : nullptr);
 }
 
 void destroy_renderpass()
@@ -2408,7 +2430,6 @@ int main(int argc, const char* argv[])
   allocate_image_memory();
 
   write_buffer_memory();
-  write_image_memory();
 
   bind_buffer_memory();
   bind_image_memory();
@@ -2552,6 +2573,7 @@ int main(int argc, const char* argv[])
   delete_compute_pipeline_cache_data();
 
   create_renderpass();
+  create_framebuffer();
 
   next_swapchain_image();
 
@@ -2559,6 +2581,7 @@ int main(int argc, const char* argv[])
   wait_for_device();
   destroy_swapchain();
 
+  destroy_framebuffer();
   destroy_renderpass();
 
   destroy_image_sampler();
