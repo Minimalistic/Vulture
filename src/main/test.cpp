@@ -52,6 +52,7 @@ Window window;
 #define COMMAND_BUFFER_GRAPHICS         1
 
 #define COMPUTE_PIPELINE_COUNT          1
+#define GRAPHICS_PIPELINE_COUNT         1
 
 #define DESCRIPTOR_SET_COUNT            1
 
@@ -101,11 +102,14 @@ std::vector<std::mutex> queue_mutex(MAX_QUEUES);
 std::mutex surface_mutex;
 std::mutex swapchain_mutex;
 std::mutex semaphore_mutex;
-std::mutex shader_mutex;
+std::mutex compute_shader_mutex;
+std::mutex vertex_shader_mutex;
 std::vector<std::mutex> compute_pipeline_mutex(COMPUTE_PIPELINE_COUNT);
+std::vector<std::mutex> graphics_pipeline_mutex(GRAPHICS_PIPELINE_COUNT);
 std::mutex compute_pipeline_cache_mutex;
 std::mutex compute_pipeline_cache_data_mutex;
 std::mutex compute_pipeline_layout_mutex;
+std::mutex graphics_pipeline_layout_mutex;
 std::vector<std::mutex> descriptor_set_layout_mutex(DESCRIPTOR_SET_COUNT);
 std::mutex descriptor_pool_mutex;
 std::vector<std::mutex> descriptor_set_mutex(DESCRIPTOR_SET_COUNT);
@@ -149,11 +153,14 @@ std::vector<VkPresentModeKHR> surface_present_modes;
 VkSwapchainKHR swapchain;
 std::vector<VkImage> swapchain_images;
 VkSemaphore semaphore;
-VkShaderModule shader;
+VkShaderModule compute_shader;
+VkShaderModule vertex_shader;
 std::vector<VkPipeline> compute_pipelines;
+std::vector<VkPipeline> graphics_pipelines;
 VkPipelineCache compute_pipeline_cache;
 void* compute_pipeline_cache_data;
 VkPipelineLayout compute_pipeline_layout;
+VkPipelineLayout graphics_pipeline_layout;
 std::vector<VkDescriptorSetLayout> descriptor_set_layouts;
 VkDescriptorPool descriptor_pool;
 std::vector<VkDescriptorSet> descriptor_sets;
@@ -1405,9 +1412,10 @@ void create_semaphore()
     std::cout << "Failed to create semaphore..." << std::endl;
 }
 
-void create_shader(const std::string& filename)
+void create_compute_shader(const std::string& filename)
 {
-  std::cout << "Reading shader file: " << filename << "..." << std::endl;
+  std::cout << "Reading compute shader file: " << filename
+	    << "..." << std::endl;
   std::ifstream is(filename,
 		   std::ios::binary | std::ios::in | std::ios::ate);
   if (is.is_open()) {
@@ -1424,19 +1432,57 @@ void create_shader(const std::string& filename)
     create_info.codeSize = size;
     create_info.pCode = (uint32_t*) code;
 
-    std::cout << "Creating shader module..." << std::endl;
+    std::cout << "Creating compute shader module..." << std::endl;
     res = vkCreateShaderModule(device,
 			       &create_info,
 			       CUSTOM_ALLOCATOR ? &alloc_callbacks : nullptr,
-			       &shader);
+			       &compute_shader);
     if (res == VK_SUCCESS)
-      std::cout << "Shader module created successfully!" << std::endl;
+      std::cout << "Compute shader module created successfully!"
+		<< std::endl;
     else
-      std::cout << "Failed to create shader module..." << std::endl;
+      std::cout << "Failed to create compute shader module..." << std::endl;
     
     delete[](code);
   } else
-    std::cout << "Failed to read shader file: " << filename << "..."
+    std::cout << "Failed to read compute shader file: " << filename << "..."
+	      << std::endl;
+}
+
+void create_vertex_shader(const std::string& filename)
+{
+  std::cout << "Reading vertex shader file: " << filename
+	    << "..." << std::endl;
+  std::ifstream is(filename,
+		   std::ios::binary | std::ios::in | std::ios::ate);
+  if (is.is_open()) {
+    auto size = is.tellg();
+    is.seekg(0, std::ios::beg);
+    char* code = new char[size];
+    is.read(code, size);
+    is.close();
+
+    VkShaderModuleCreateInfo create_info = {};
+    create_info.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
+    create_info.pNext = nullptr;
+    create_info.flags = 0;
+    create_info.codeSize = size;
+    create_info.pCode = (uint32_t*) code;
+
+    std::cout << "Creating vertex shader module..." << std::endl;
+    res = vkCreateShaderModule(device,
+			       &create_info,
+			       CUSTOM_ALLOCATOR ? &alloc_callbacks : nullptr,
+			       &vertex_shader);
+    if (res == VK_SUCCESS)
+      std::cout << "Vertex shader module created successfully!"
+		<< std::endl;
+    else
+      std::cout << "Failed to create vertex shader module..." << std::endl;
+    
+    delete[](code);
+  } else
+    std::cout << "Failed to read vertex shader file: " << filename << "..."
 	      << std::endl;
 }
 
@@ -1601,7 +1647,7 @@ void create_compute_pipelines()
     stage_info.pNext = nullptr;
     stage_info.flags = 0;
     stage_info.stage = VK_SHADER_STAGE_COMPUTE_BIT;
-    stage_info.module = shader;
+    stage_info.module = compute_shader;
     stage_info.pName = "main";
     stage_info.pSpecializationInfo = nullptr;
 
@@ -1938,6 +1984,147 @@ void create_framebuffer()
     std::cout << "Failed to create framebuffer..." << std::endl;
 }
 
+void create_graphics_pipeline_layout()
+{
+  VkPipelineLayoutCreateInfo create_info = {};
+  create_info.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+  create_info.pNext = nullptr;
+  create_info.flags = 0;
+  create_info.setLayoutCount = 0;
+  create_info.pSetLayouts = nullptr;
+  create_info.pushConstantRangeCount = 0;
+  create_info.pPushConstantRanges = nullptr;
+
+  std::cout << "Creating graphics pipeline layout..."
+	    << std::endl;
+  res = vkCreatePipelineLayout(device,
+			       &create_info,
+			       CUSTOM_ALLOCATOR ? &alloc_callbacks : nullptr,
+			       &graphics_pipeline_layout);
+  if (res == VK_SUCCESS)
+    std::cout << "Graphics pipeline layout created successfully!"
+	      << std::endl;
+  else
+    std::cout << "Failed to create graphics pipeline layout..."
+	      << std::endl;
+}
+
+void create_graphics_pipelines()
+{
+  std::vector<VkPipelineShaderStageCreateInfo> shader_stages;
+  VkPipelineShaderStageCreateInfo vertex_shader_stage = {};
+  vertex_shader_stage.sType =
+    VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+  vertex_shader_stage.pNext = nullptr;
+  vertex_shader_stage.flags = 0;
+  vertex_shader_stage.stage = VK_SHADER_STAGE_VERTEX_BIT;
+  vertex_shader_stage.module = vertex_shader;
+  vertex_shader_stage.pName = "main";
+  vertex_shader_stage.pSpecializationInfo = nullptr;
+  shader_stages.push_back(vertex_shader_stage);
+
+  VkPipelineVertexInputStateCreateInfo vertex_input_create_info = {};
+  vertex_input_create_info.sType =
+    VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
+  vertex_input_create_info.pNext = nullptr;
+  vertex_input_create_info.flags = 0;
+  vertex_input_create_info.vertexBindingDescriptionCount = 0;
+  vertex_input_create_info.pVertexBindingDescriptions = nullptr;
+  vertex_input_create_info.vertexAttributeDescriptionCount = 0;
+  vertex_input_create_info.pVertexAttributeDescriptions = nullptr;
+
+  VkPipelineInputAssemblyStateCreateInfo input_assembly_create_info = {};
+  input_assembly_create_info.sType =
+    VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
+  input_assembly_create_info.pNext = nullptr;
+  input_assembly_create_info.flags = 0;
+  input_assembly_create_info.topology = VK_PRIMITIVE_TOPOLOGY_POINT_LIST;
+  input_assembly_create_info.primitiveRestartEnable = VK_FALSE;
+
+  VkViewport viewport = {};
+  viewport.x = 0.0f;
+  viewport.y = 0.0f;
+  viewport.width = 1.0f;
+  viewport.height = 1.0f;
+  viewport.minDepth = 0.1f;
+  viewport.maxDepth = 1000.0f;
+
+  VkRect2D scissor = {};
+  scissor.offset.x = 0;
+  scissor.offset.y = 0;
+  scissor.extent.width = 1;
+  scissor.extent.height = 1;
+
+  VkPipelineViewportStateCreateInfo viewport_create_info = {};
+  viewport_create_info.sType =
+    VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
+  viewport_create_info.pNext = nullptr;
+  viewport_create_info.flags = 0;
+  viewport_create_info.viewportCount = 1;
+  viewport_create_info.pViewports = &viewport;
+  viewport_create_info.scissorCount = 1;
+  viewport_create_info.pScissors = &scissor;
+
+  VkPipelineRasterizationStateCreateInfo rasterization_create_info = {};
+  rasterization_create_info.sType =
+    VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
+  rasterization_create_info.pNext = nullptr;
+  rasterization_create_info.flags = 0;
+  rasterization_create_info.depthClampEnable = VK_FALSE;
+  rasterization_create_info.rasterizerDiscardEnable = VK_TRUE;
+  rasterization_create_info.polygonMode = VK_POLYGON_MODE_FILL;
+  rasterization_create_info.cullMode = VK_CULL_MODE_NONE;
+  rasterization_create_info.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
+  rasterization_create_info.depthBiasEnable = VK_FALSE;
+  rasterization_create_info.depthBiasConstantFactor = 0.0f;
+  rasterization_create_info.depthBiasClamp = 0.0f;
+  rasterization_create_info.depthBiasSlopeFactor = 0.0f;
+  rasterization_create_info.lineWidth = 1.0f;
+
+  std::vector<VkGraphicsPipelineCreateInfo> infos(GRAPHICS_PIPELINE_COUNT);
+  for (unsigned int i = 0; i != GRAPHICS_PIPELINE_COUNT; i++) {
+    infos[i].sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
+    infos[i].pNext = nullptr;
+    infos[i].flags = 0;
+    infos[i].stageCount = static_cast<uint32_t>(shader_stages.size());
+    infos[i].pStages = shader_stages.data();
+    infos[i].pVertexInputState = &vertex_input_create_info;
+    infos[i].pInputAssemblyState = &input_assembly_create_info;
+    infos[i].pTessellationState = nullptr;
+    infos[i].pViewportState = &viewport_create_info;
+    infos[i].pRasterizationState = &rasterization_create_info;
+    infos[i].pMultisampleState = nullptr;
+    infos[i].pDepthStencilState = nullptr;
+    infos[i].pColorBlendState = nullptr;
+    infos[i].pDynamicState = nullptr;
+    infos[i].layout = graphics_pipeline_layout;
+    infos[i].renderPass = renderpass;
+    infos[i].subpass = 0;
+    infos[i].basePipelineHandle = VK_NULL_HANDLE;
+    infos[i].basePipelineIndex = 0;
+  }
+  
+  std::cout << "Creating " << GRAPHICS_PIPELINE_COUNT
+	    << " graphics pipeline"
+	    << (GRAPHICS_PIPELINE_COUNT != 1 ? "s..." : "...") << std::endl;
+  graphics_pipelines.resize(GRAPHICS_PIPELINE_COUNT);
+  res = vkCreateGraphicsPipelines(device,
+				  VK_NULL_HANDLE,
+				  static_cast<uint32_t>(infos.size()),
+				  infos.data(),
+				  CUSTOM_ALLOCATOR ? &alloc_callbacks : nullptr,
+				  graphics_pipelines.data());
+  if (res == VK_SUCCESS)
+    std::cout << "Created " << GRAPHICS_PIPELINE_COUNT
+	      << " graphics pipeline"
+	      << (GRAPHICS_PIPELINE_COUNT != 1 ? "s" : "")
+	      << " successfully!" << std::endl;
+  else
+    std::cout << "Failed to create graphics pipeline"
+	      << (GRAPHICS_PIPELINE_COUNT != 1 ? "s..." : "...")
+	      << std::endl;
+}
+
 void next_swapchain_image()
 {
   std::cout << "Acquiring next swapchain image..." << std::endl;
@@ -2035,6 +2222,33 @@ void destroy_compute_pipelines()
   }
 }
 
+void destroy_graphics_pipelines()
+{
+  std::vector<std::unique_lock<std::mutex>> locks;
+  for (auto& mut : graphics_pipeline_mutex)
+    locks.emplace_back(mut, std::defer_lock);
+  
+  for (unsigned int i = 0; i != GRAPHICS_PIPELINE_COUNT; i++) {
+    std::cout << "Destroying graphics pipeline " << (i+1) << "/"
+	      << GRAPHICS_PIPELINE_COUNT << "..." << std::endl;
+    locks[i].lock();
+    vkDestroyPipeline(device,
+		      graphics_pipelines[i],
+		      CUSTOM_ALLOCATOR ? &alloc_callbacks : nullptr);
+    locks[i].unlock();
+  }
+}
+
+void destroy_graphics_pipeline_layout()
+{
+  std::lock_guard<std::mutex> lock(graphics_pipeline_layout_mutex);
+  std::cout << "Destroying graphics pipeline layout..." << std::endl;
+  vkDestroyPipelineLayout(device,
+			  graphics_pipeline_layout,
+			  CUSTOM_ALLOCATOR ? &alloc_callbacks : nullptr);
+}
+
+
 void destroy_compute_pipeline_layout()
 {
   std::lock_guard<std::mutex> lock(compute_pipeline_layout_mutex);
@@ -2071,12 +2285,21 @@ void destroy_descriptor_set_layouts()
   }
 }
 
-void destroy_shader()
+void destroy_compute_shader()
 {
-  std::cout << "Destroying shader module..." << std::endl;
-  std::lock_guard<std::mutex> lock(shader_mutex);
+  std::cout << "Destroying compute shader module..." << std::endl;
+  std::lock_guard<std::mutex> lock(compute_shader_mutex);
   vkDestroyShaderModule(device,
-			shader,
+			compute_shader,
+			CUSTOM_ALLOCATOR ? &alloc_callbacks : nullptr);
+}
+
+void destroy_vertex_shader()
+{
+  std::cout << "Destroying vertex shader module..." << std::endl;
+  std::lock_guard<std::mutex> lock(vertex_shader_mutex);
+  vkDestroyShaderModule(device,
+			vertex_shader,
 			CUSTOM_ALLOCATOR ? &alloc_callbacks : nullptr);
 }
 
@@ -2524,7 +2747,7 @@ int main(int argc, const char* argv[])
 
   create_semaphore();
 
-  create_shader("shaders/simple.comp.spv");
+  create_compute_shader("shaders/simple.comp.spv");
 
   create_descriptor_set_layouts();
 
@@ -2572,8 +2795,11 @@ int main(int argc, const char* argv[])
   fetch_compute_pipeline_cache_data();
   delete_compute_pipeline_cache_data();
 
+  create_vertex_shader("shaders/simple.vert.spv");
   create_renderpass();
   create_framebuffer();
+  create_graphics_pipeline_layout();
+  create_graphics_pipelines();
 
   next_swapchain_image();
 
@@ -2581,8 +2807,11 @@ int main(int argc, const char* argv[])
   wait_for_device();
   destroy_swapchain();
 
+  destroy_graphics_pipelines();
+  destroy_graphics_pipeline_layout();
   destroy_framebuffer();
   destroy_renderpass();
+  destroy_vertex_shader();
 
   destroy_image_sampler();
 
@@ -2596,7 +2825,7 @@ int main(int argc, const char* argv[])
 
   destroy_descriptor_set_layouts();
 
-  destroy_shader();
+  destroy_compute_shader();
 
   destroy_semaphore();
   
