@@ -85,6 +85,8 @@ Window window;
 #define SWAPCHAIN_MIN_IMAGE_COUNT   3
 #endif
 
+#define MAX_SWAPCHAIN_IMAGES        8
+
 #define NEXT_IMAGE_TIMEOUT          1000 // nanoseconds
 
 std::string platform;
@@ -104,6 +106,7 @@ std::vector<std::mutex> command_buffer_mutex(COMMAND_BUFFER_COUNT);
 std::vector<std::mutex> queue_mutex(MAX_QUEUES);
 std::mutex surface_mutex;
 std::mutex swapchain_mutex;
+std::vector<std::mutex> swapchain_image_view_mutex(MAX_SWAPCHAIN_IMAGES);
 std::mutex semaphore_mutex;
 std::mutex compute_shader_mutex;
 std::mutex vertex_shader_mutex;
@@ -155,6 +158,7 @@ std::vector<VkSurfaceFormatKHR> surface_formats;
 std::vector<VkPresentModeKHR> surface_present_modes;
 VkSwapchainKHR swapchain;
 std::vector<VkImage> swapchain_images;
+std::vector<VkImageView> swapchain_image_views;
 VkSemaphore semaphore;
 VkShaderModule compute_shader;
 VkShaderModule vertex_shader;
@@ -1168,6 +1172,51 @@ void get_swapchain_images()
       std::cout << "Failed to get swapchain images..." << std::endl;
   } else
     std::cout << "Failed to get swapchain image count..." << std::endl;
+}
+
+void create_swapchain_image_views()
+{
+  swapchain_image_views.resize(swapchain_images.size());
+  
+  VkImageSubresourceRange range = {};
+  range.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+  range.baseMipLevel = 0;
+  range.levelCount = 1;
+  range.baseArrayLayer = 0;
+  range.layerCount = 1;
+
+  for (unsigned int i = 0; i != swapchain_image_views.size(); i++) {
+    VkImageViewCreateInfo create_info = {};
+    create_info.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+    create_info.pNext = nullptr;
+    create_info.flags = 0;
+    create_info.image = swapchain_images[i];
+    create_info.viewType = VK_IMAGE_VIEW_TYPE_2D;
+    create_info.format = SWAPCHAIN_IMAGE_FORMAT;
+    create_info.components = {
+      VK_COMPONENT_SWIZZLE_R,
+      VK_COMPONENT_SWIZZLE_G,
+      VK_COMPONENT_SWIZZLE_B,
+      VK_COMPONENT_SWIZZLE_A
+    };
+    create_info.subresourceRange = range;
+    
+    std::cout << "Creating swapchain image view: " << (i+1) << "/"
+	      << swapchain_image_views.size()
+	      << "..." << std::endl;
+    res = vkCreateImageView(device,
+			    &create_info,
+			    CUSTOM_ALLOCATOR ? &alloc_callbacks : nullptr,
+			    &swapchain_image_views[i]);
+    if (res == VK_SUCCESS)
+      std::cout << "Created swapchain image view " << (i+1) << "/"
+		<< swapchain_image_views.size() << " sucessfully!"
+		<< std::endl;
+    else
+      std::cout << "Failed to create swapchain image view " << (i+1)
+		<< "/" << swapchain_image_views.size() << "..."
+		<< std::endl;
+  }
 }
 
 void begin_recording()
@@ -2531,6 +2580,23 @@ void destroy_semaphore()
 		     CUSTOM_ALLOCATOR ? &alloc_callbacks : nullptr);
 }
 
+void destroy_swapchain_image_views()
+{
+  std::vector<std::unique_lock<std::mutex>> locks;
+  for (unsigned int i = 0; i != swapchain_image_views.size(); i++)
+    locks.emplace_back(swapchain_image_view_mutex[i], std::defer_lock);
+
+  for (unsigned int i = 0; i != swapchain_image_views.size(); i++) {
+    locks[i].lock();
+    std::cout << "Destroying swapchain image view " << (i+1) << "/"
+	      << swapchain_image_views.size() << "..." << std::endl;
+    vkDestroyImageView(device,
+		       swapchain_image_views[i],
+		       CUSTOM_ALLOCATOR ? &alloc_callbacks : nullptr);
+    locks[i].unlock();
+  }
+}
+
 void destroy_swapchain()
 {
   std::lock_guard<std::mutex> lock(swapchain_mutex);
@@ -2894,6 +2960,7 @@ int main(int argc, const char* argv[])
   
   create_swapchain();  
   get_swapchain_images();
+  create_swapchain_image_views();
 
   begin_recording();
   record_copy_buffer_commands();
@@ -3056,6 +3123,7 @@ int main(int argc, const char* argv[])
   
   // Cleanup
   wait_for_device();
+  destroy_swapchain_image_views();
   destroy_swapchain();
 
   destroy_graphics_pipelines();
