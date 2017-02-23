@@ -5,6 +5,7 @@
 #include <string>
 #include <fstream>
 #include <iomanip>
+#include <thread>
 
 #define USE_XCB false
 
@@ -53,6 +54,8 @@ Window window;
 
 #define COMPUTE_PIPELINE_COUNT          1
 #define GRAPHICS_PIPELINE_COUNT         1
+
+#define CLEAR_IMAGE                     0
 
 #define DESCRIPTOR_SET_COUNT            1
 
@@ -261,11 +264,12 @@ void create_window()
 		    window,
 		    screen->root,
 		    0, 0,
-		    150, 150,
+		    WINDOW_WIDTH, WINDOW_HEIGHT,
 		    10,
 		    XCB_WINDOW_CLASS_INPUT_OUTPUT,
 		    screen->root_visual,
 		    0, NULL);
+  xcb_map_window(connection, window);
   xcb_flush(connection);
 #else
   display = XOpenDisplay(NULL);
@@ -273,10 +277,11 @@ void create_window()
   window = XCreateSimpleWindow(display,
 			       RootWindow(display, screen),
 			       10, 10,
-			       100, 100,
+			       WINDOW_WIDTH, WINDOW_HEIGHT,
 			       1,
 			       BlackPixel(display, screen),
 			       WhitePixel(display, screen));
+  XMapWindow(display, window);
   XSync(display, false);
 #endif
 }
@@ -569,7 +574,9 @@ void create_images()
     img_create_infos[i].arrayLayers = 1;
     img_create_infos[i].samples = VK_SAMPLE_COUNT_1_BIT;
     img_create_infos[i].tiling = VK_IMAGE_TILING_OPTIMAL;
-    img_create_infos[i].usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+    img_create_infos[i].usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT
+      | VK_IMAGE_USAGE_TRANSFER_SRC_BIT
+      | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
     img_create_infos[i].sharingMode = VK_SHARING_MODE_EXCLUSIVE;
     img_create_infos[i].queueFamilyIndexCount = 0;
     img_create_infos[i].pQueueFamilyIndices = nullptr;
@@ -1111,7 +1118,8 @@ void create_swapchain()
   img_dimensions.height = surface_capabilities.currentExtent.height;
   create_info.imageExtent = img_dimensions;
   create_info.imageArrayLayers = 1;
-  create_info.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+  create_info.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT
+    | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
   create_info.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
   create_info.queueFamilyIndexCount = 0;
   create_info.pQueueFamilyIndices = nullptr;
@@ -2073,7 +2081,7 @@ void create_graphics_pipelines()
     VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
   input_assembly_create_info.pNext = nullptr;
   input_assembly_create_info.flags = 0;
-  input_assembly_create_info.topology = VK_PRIMITIVE_TOPOLOGY_POINT_LIST;
+  input_assembly_create_info.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
   input_assembly_create_info.primitiveRestartEnable = VK_FALSE;
 
   VkViewport viewport = {};
@@ -2174,6 +2182,180 @@ void next_swapchain_image()
 	      << cur_swapchain_img << "!" << std::endl;
   else
     std::cout << "Failed to get next swapchain image..." << std::endl;
+}
+
+void record_image_barrier(uint32_t img_idx,
+			  uint32_t command_buf_idx,
+			  VkImageLayout old_layout,
+			  VkAccessFlags old_flags,
+			  VkImageLayout new_layout,
+			  VkAccessFlags new_flags)
+{
+  VkImageSubresourceRange range = {};
+  range.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+  range.baseMipLevel = 0;
+  range.levelCount = 1;
+  range.baseArrayLayer = 0;
+  range.layerCount = 1;
+  
+  VkImageMemoryBarrier barrier = {};
+  barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+  barrier.pNext = nullptr;
+  barrier.srcAccessMask = old_flags;
+  barrier.dstAccessMask = new_flags;
+  barrier.oldLayout = old_layout;
+  barrier.newLayout = new_layout;
+  barrier.srcQueueFamilyIndex = queue_family_idx;
+  barrier.dstQueueFamilyIndex = queue_family_idx;
+  barrier.image = images[img_idx];
+  barrier.subresourceRange = range;
+
+  std::cout << "Recording image pipeline barrier..." << std::endl;
+  vkCmdPipelineBarrier(command_buffers[command_buf_idx],
+		       VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+		       VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
+		       0,
+		       0, nullptr,
+		       0, nullptr,
+		       1, &barrier);
+}
+
+void record_clear_swapchain_image(uint32_t command_buf_idx)
+{
+  VkClearColorValue clear_color = { 1.0f, 0.0f, 1.0f, 1.0f };
+  
+  VkImageSubresourceRange range = {};
+  range.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+  range.baseMipLevel = 0;
+  range.levelCount = 1;
+  range.baseArrayLayer = 0;
+  range.layerCount = 1;
+  
+  std::cout << "Recording clear current swapchain image..." << std::endl;
+  vkCmdClearColorImage(command_buffers[command_buf_idx],
+		       swapchain_images[cur_swapchain_img],
+		       VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+		       &clear_color,
+		       1,
+		       &range);		       
+
+}
+
+void record_swapchain_image_barrier(uint32_t command_buf_idx,
+				    VkImageLayout old_layout,
+				    VkAccessFlags old_flags,
+				    VkImageLayout new_layout,
+				    VkAccessFlags new_flags)
+{
+  VkImageSubresourceRange range = {};
+  range.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+  range.baseMipLevel = 0;
+  range.levelCount = 1;
+  range.baseArrayLayer = 0;
+  range.layerCount = 1;
+  
+  VkImageMemoryBarrier barrier = {};
+  barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+  barrier.pNext = nullptr;
+  barrier.srcAccessMask = old_flags;
+  barrier.dstAccessMask = new_flags;
+  barrier.oldLayout = old_layout;
+  barrier.newLayout = new_layout;
+  barrier.srcQueueFamilyIndex = queue_family_idx;
+  barrier.dstQueueFamilyIndex = queue_family_idx;
+  barrier.image = swapchain_images[cur_swapchain_img];
+  barrier.subresourceRange = range;
+
+  std::cout << "Recording swapchain image pipeline barrier..." << std::endl;
+  vkCmdPipelineBarrier(command_buffers[command_buf_idx],
+		       VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+		       VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
+		       0,
+		       0, nullptr,
+		       0, nullptr,
+		       1, &barrier);
+}
+
+void present_current_swapchain_image(uint32_t queue_idx)
+{
+  VkPresentInfoKHR present_info = {};
+  present_info.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
+  present_info.pNext = nullptr;
+  present_info.waitSemaphoreCount = 1;
+  present_info.pWaitSemaphores = &semaphore;
+  present_info.swapchainCount = 1;
+  present_info.pSwapchains = &swapchain;
+  present_info.pImageIndices = &cur_swapchain_img;
+  present_info.pResults = nullptr;
+
+  std::cout << "Presenting current swapchain image..." << std::endl;
+  res = vkQueuePresentKHR(queues[queue_idx],
+			  &present_info);
+  if (res == VK_SUCCESS)
+    std::cout << "Presented current swapchain image successfully!"
+	      << std::endl;
+  else
+    std::cout << "Failed to present current swapchain image..."
+	      << std::endl;
+}
+
+void record_clear_color_image(uint32_t img_idx, uint32_t command_buf_idx)
+{
+  VkClearColorValue clear_color = { 1.0f, 1.0f, 1.0f, 1.0f };
+  
+  VkImageSubresourceRange range = {};
+  range.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+  range.baseMipLevel = 0;
+  range.levelCount = 1;
+  range.baseArrayLayer = 0;
+  range.layerCount = 1;
+  
+  std::cout << "Recording clear image " << img_idx << "..." << std::endl;
+  vkCmdClearColorImage(command_buffers[command_buf_idx],
+		       images[img_idx],
+		       VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+		       &clear_color,
+		       1,
+		       &range);		       
+}
+
+void record_copy_to_swapchain_image(uint32_t img_idx,
+				    VkImageLayout img_layout,
+				    VkImageLayout swapchain_img_layout,
+				    uint32_t command_buf_idx)
+{
+  VkImageSubresourceLayers subresource = {};
+  subresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+  subresource.mipLevel = 0;
+  subresource.baseArrayLayer = 0;
+  subresource.layerCount = 1;
+
+  VkOffset3D copy_offset = {};
+  copy_offset.x = 0;
+  copy_offset.y = 0;
+  copy_offset.z = 0;
+
+  VkExtent3D copy_extent = {};
+  copy_extent.width = WINDOW_WIDTH;
+  copy_extent.height = WINDOW_HEIGHT;
+  copy_extent.depth = 1;
+  
+  VkImageCopy copy_info = {};
+  copy_info.srcSubresource = subresource;
+  copy_info.srcOffset = copy_offset;
+  copy_info.dstSubresource = subresource;
+  copy_info.dstOffset = copy_offset;
+  copy_info.extent = copy_extent;
+  
+  std::cout << "Copying image " << img_idx << " to current swapchain image"
+	    << "..." << std::endl;
+  vkCmdCopyImage(command_buffers[command_buf_idx],
+		 images[img_idx],
+		 img_layout,
+		 swapchain_images[cur_swapchain_img],
+		 swapchain_img_layout,
+		 1,
+		 &copy_info);
 }
 
 void destroy_framebuffer()
@@ -2836,8 +3018,40 @@ int main(int argc, const char* argv[])
   create_graphics_pipeline_layout();
   create_graphics_pipelines();
 
-  next_swapchain_image();
+  begin_recording(COMMAND_BUFFER_GRAPHICS);
+  record_image_barrier(CLEAR_IMAGE,
+		       COMMAND_BUFFER_GRAPHICS,
+		       VK_IMAGE_LAYOUT_UNDEFINED,
+		       0,
+		       VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+		       VK_ACCESS_TRANSFER_WRITE_BIT);
+  record_clear_color_image(CLEAR_IMAGE, COMMAND_BUFFER_GRAPHICS);
+  end_recording(COMMAND_BUFFER_GRAPHICS);
+  submit_to_queue(COMMAND_BUFFER_GRAPHICS, submit_queue_idx);
+  wait_for_queue(submit_queue_idx);
+  reset_command_buffer(COMMAND_BUFFER_GRAPHICS);
 
+  next_swapchain_image();
+  begin_recording(COMMAND_BUFFER_GRAPHICS);
+  record_swapchain_image_barrier(COMMAND_BUFFER_GRAPHICS,
+				 VK_IMAGE_LAYOUT_UNDEFINED,
+				 0,
+				 VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+				 VK_ACCESS_TRANSFER_WRITE_BIT);
+  record_clear_swapchain_image(COMMAND_BUFFER_GRAPHICS);
+  record_swapchain_image_barrier(COMMAND_BUFFER_GRAPHICS,
+				 VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+				 VK_ACCESS_TRANSFER_WRITE_BIT,
+				 VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
+				 VK_ACCESS_MEMORY_READ_BIT);
+  end_recording(COMMAND_BUFFER_GRAPHICS);
+  submit_to_queue(COMMAND_BUFFER_GRAPHICS, submit_queue_idx);
+  wait_for_queue(submit_queue_idx);
+  reset_command_buffer(COMMAND_BUFFER_GRAPHICS);
+  present_current_swapchain_image(submit_queue_idx);
+
+  std::this_thread::sleep_for(std::chrono::milliseconds(10000));
+  
   // Cleanup
   wait_for_device();
   destroy_swapchain();
