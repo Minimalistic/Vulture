@@ -252,6 +252,8 @@ void create_window()
     std::cout << "Failed to create window..." << std::endl;
   else
     std::cout << "Window created successfully!" << std::endl;
+
+  ShowWindow(hWnd, SW_SHOW);
 #elif USE_XCB
   connection = xcb_connect(NULL, NULL);
   const xcb_setup_t*    setup = xcb_get_setup(connection);
