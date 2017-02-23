@@ -171,6 +171,12 @@ VkFramebuffer framebuffer;
 const std::string logfile = "vulture.log";
 const std::string errfile = "vulture.err";
 
+typedef struct vertex_t {
+  float position[4];
+  float normal[3];
+  float texcoord[2];
+} vertex;
+
 #ifdef VK_USE_PLATFORM_WIN32_KHR
 LRESULT CALLBACK WndProc(HWND hwnd,
 			 UINT uMsg,
@@ -523,7 +529,8 @@ void create_buffers()
     buf_create_infos[i].usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT
       | VK_BUFFER_USAGE_TRANSFER_DST_BIT
       | VK_BUFFER_USAGE_UNIFORM_TEXEL_BUFFER_BIT
-      | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
+      | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT
+      | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
     buf_create_infos[i].sharingMode = VK_SHARING_MODE_EXCLUSIVE;
     buf_create_infos[i].queueFamilyIndexCount = 0;
     buf_create_infos[i].pQueueFamilyIndices = nullptr;
@@ -2023,15 +2030,43 @@ void create_graphics_pipelines()
   vertex_shader_stage.pSpecializationInfo = nullptr;
   shader_stages.push_back(vertex_shader_stage);
 
+  VkVertexInputBindingDescription vertex_binding = {};
+  vertex_binding.binding = 0;
+  vertex_binding.stride = sizeof(vertex);
+  vertex_binding.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+
+  VkVertexInputAttributeDescription position_attribute = {};
+  position_attribute.location = 0;
+  position_attribute.binding = 0;
+  position_attribute.format = VK_FORMAT_R32G32B32A32_SFLOAT;
+  position_attribute.offset = offsetof(vertex, position);
+  VkVertexInputAttributeDescription normal_attribute = {};
+  normal_attribute.location = 1;
+  normal_attribute.binding = 0;
+  normal_attribute.format = VK_FORMAT_R32G32B32_SFLOAT;
+  normal_attribute.offset = offsetof(vertex, normal);
+  VkVertexInputAttributeDescription texcoord_attribute = {};
+  texcoord_attribute.location = 2;
+  texcoord_attribute.binding = 0;
+  texcoord_attribute.format = VK_FORMAT_R32G32_SFLOAT;
+  texcoord_attribute.offset = offsetof(vertex, texcoord);
+  
+  std::vector<VkVertexInputAttributeDescription> vertex_attributes;
+  vertex_attributes.push_back(position_attribute);
+  vertex_attributes.push_back(normal_attribute);
+  vertex_attributes.push_back(texcoord_attribute);
+  
   VkPipelineVertexInputStateCreateInfo vertex_input_create_info = {};
   vertex_input_create_info.sType =
     VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
   vertex_input_create_info.pNext = nullptr;
   vertex_input_create_info.flags = 0;
-  vertex_input_create_info.vertexBindingDescriptionCount = 0;
-  vertex_input_create_info.pVertexBindingDescriptions = nullptr;
-  vertex_input_create_info.vertexAttributeDescriptionCount = 0;
-  vertex_input_create_info.pVertexAttributeDescriptions = nullptr;
+  vertex_input_create_info.vertexBindingDescriptionCount = 1;
+  vertex_input_create_info.pVertexBindingDescriptions = &vertex_binding;
+  vertex_input_create_info.vertexAttributeDescriptionCount =
+    static_cast<uint32_t>(vertex_attributes.size());
+  vertex_input_create_info.pVertexAttributeDescriptions =
+    vertex_attributes.data();
 
   VkPipelineInputAssemblyStateCreateInfo input_assembly_create_info = {};
   input_assembly_create_info.sType =
