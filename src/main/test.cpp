@@ -6,6 +6,7 @@
 #include <fstream>
 #include <iomanip>
 #include <thread>
+#include <cassert>
 
 #define USE_XCB false
 
@@ -1155,6 +1156,7 @@ void get_swapchain_images()
 				&swapchain_img_count,
 				nullptr);
   if (res == VK_SUCCESS) {
+    assert(swapchain_img_count <= MAX_SWAPCHAIN_IMAGES);
     std::cout << "Getting " << swapchain_img_count
 	      << " swapchain image"
 	      << (swapchain_img_count != 1 ? "s" : "") << "..." << std::endl;
