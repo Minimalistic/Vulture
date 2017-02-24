@@ -121,7 +121,7 @@ std::mutex descriptor_pool_mutex;
 std::vector<std::mutex> descriptor_set_mutex(DESCRIPTOR_SET_COUNT);
 std::mutex image_sampler_mutex;
 std::mutex renderpass_mutex;
-std::mutex framebuffer_mutex;
+std::vector<std::mutex> framebuffer_mutex(MAX_SWAPCHAIN_IMAGES);
 
 allocator my_alloc = {};
 
@@ -173,7 +173,7 @@ VkDescriptorPool descriptor_pool;
 std::vector<VkDescriptorSet> descriptor_sets;
 VkSampler image_sampler;
 VkRenderPass renderpass;
-VkFramebuffer framebuffer;
+std::vector<VkFramebuffer> framebuffers;
 
 const std::string logfile = "vulture.log";
 const std::string errfile = "vulture.err";
@@ -2026,28 +2026,37 @@ void create_renderpass()
     std::cout << "Failed to create renderpass..." << std::endl;
 }
 
-void create_framebuffer()
+void create_framebuffers()
 {
-  VkFramebufferCreateInfo create_info = {};
-  create_info.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
-  create_info.pNext = nullptr;
-  create_info.flags = 0;
-  create_info.renderPass = renderpass;
-  create_info.attachmentCount = 1;
-  create_info.pAttachments = &image_views[0];
-  create_info.width = WINDOW_WIDTH;
-  create_info.height = WINDOW_HEIGHT;
-  create_info.layers = 1;
+  framebuffers.resize(swapchain_images.size());
+  
+  for (unsigned int i = 0; i != swapchain_image_views.size(); i++) {
+    VkFramebufferCreateInfo create_info = {};
+    create_info.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
+    create_info.pNext = nullptr;
+    create_info.flags = 0;
+    create_info.renderPass = renderpass;
+    create_info.attachmentCount = 1;
+    create_info.pAttachments = &swapchain_image_views[i];
+    create_info.width = surface_capabilities.currentExtent.width;
+    create_info.height = surface_capabilities.currentExtent.height;
+    create_info.layers = 1;
 
-  std::cout << "Creating framebuffer..." << std::endl;
-  res = vkCreateFramebuffer(device,
-			    &create_info,
-			    CUSTOM_ALLOCATOR ? &alloc_callbacks : nullptr,
-			    &framebuffer);
-  if (res == VK_SUCCESS)
-    std::cout << "Framebuffer created successfully!" << std::endl;
-  else
-    std::cout << "Failed to create framebuffer..." << std::endl;
+    std::cout << "Creating framebuffer " << (i+1)
+	      << "/" << swapchain_image_views.size() << "..." << std::endl;
+    res = vkCreateFramebuffer(device,
+			      &create_info,
+			      CUSTOM_ALLOCATOR ? &alloc_callbacks : nullptr,
+			      &framebuffers[i]);
+    if (res == VK_SUCCESS)
+      std::cout << "Framebuffer " << (i+1) << "/"
+		<< swapchain_image_views.size()
+		<< " created successfully!" << std::endl;
+    else
+      std::cout << "Failed to create framebuffer "
+		<< (i+1) << "/" << swapchain_image_views.size()
+		<< "..." << std::endl;
+  }
 }
 
 void create_graphics_pipeline_layout()
@@ -2409,13 +2418,21 @@ void record_copy_to_swapchain_image(uint32_t img_idx,
 		 &copy_info);
 }
 
-void destroy_framebuffer()
+void destroy_framebuffers()
 {
-  std::cout << "Destroying framebuffer..." << std::endl;
-  std::lock_guard<std::mutex> lock(framebuffer_mutex);
-  vkDestroyFramebuffer(device,
-		       framebuffer,
-		       CUSTOM_ALLOCATOR ? &alloc_callbacks : nullptr);
+  std::vector<std::unique_lock<std::mutex>> locks;
+  for (unsigned int i = 0; i != framebuffers.size(); i++)
+    locks.emplace_back(framebuffer_mutex[i], std::defer_lock);
+
+  for (unsigned int i = 0; i != framebuffers.size(); i++) {
+    locks[i].lock();
+    std::cout << "Destroying framebuffer " << (i+1) << "/"
+	      << framebuffers.size() << "..." << std::endl;
+    vkDestroyFramebuffer(device,
+			 framebuffers[i],
+			 CUSTOM_ALLOCATOR ? &alloc_callbacks : nullptr);
+    locks[i].unlock();
+  }
 }
 
 void destroy_renderpass()
@@ -3083,7 +3100,7 @@ int main(int argc, const char* argv[])
 
   create_vertex_shader("shaders/simple.vert.spv");
   create_renderpass();
-  create_framebuffer();
+  create_framebuffers();
   create_graphics_pipeline_layout();
   create_graphics_pipelines();
 
@@ -3128,7 +3145,7 @@ int main(int argc, const char* argv[])
 
   destroy_graphics_pipelines();
   destroy_graphics_pipeline_layout();
-  destroy_framebuffer();
+  destroy_framebuffers();
   destroy_renderpass();
   destroy_vertex_shader();
 
