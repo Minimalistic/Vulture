@@ -69,8 +69,8 @@ Window window;
 #define HOST_COHERENT(X) ((X & VK_MEMORY_PROPERTY_HOST_COHERENT_BIT) != 0)
 #define HOST_VISIBLE(X)  ((X & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) != 0)
 
-#define WINDOW_WIDTH 800
-#define WINDOW_HEIGHT 600
+#define PREFERRED_WIDTH 800
+#define PREFERRED_HEIGHT 600
 
 #define BUFFER_FORMAT VK_FORMAT_R8G8B8A8_UNORM
 #define IMAGE_FORMAT  VK_FORMAT_B8G8R8A8_UNORM
@@ -246,7 +246,7 @@ void create_window()
     szTitle,  
     WS_OVERLAPPEDWINDOW,  
     CW_USEDEFAULT, CW_USEDEFAULT,  
-    WINDOW_WIDTH, WINDOW_HEIGHT,
+    PREFERRED_WIDTH, PREFERRED_HEIGHT,
     NULL,  
     NULL,  
     hInst,  
@@ -270,7 +270,7 @@ void create_window()
 		    window,
 		    screen->root,
 		    0, 0,
-		    WINDOW_WIDTH, WINDOW_HEIGHT,
+		    PREFERRED_WIDTH, PREFERRED_HEIGHT,
 		    10,
 		    XCB_WINDOW_CLASS_INPUT_OUTPUT,
 		    screen->root_visual,
@@ -283,7 +283,7 @@ void create_window()
   window = XCreateSimpleWindow(display,
 			       RootWindow(display, screen),
 			       10, 10,
-			       WINDOW_WIDTH, WINDOW_HEIGHT,
+			       PREFERRED_WIDTH, PREFERRED_HEIGHT,
 			       1,
 			       BlackPixel(display, screen),
 			       WhitePixel(display, screen));
@@ -572,8 +572,8 @@ void create_images()
     img_create_infos[i].imageType = VK_IMAGE_TYPE_3D;
     img_create_infos[i].format = IMAGE_FORMAT;
     VkExtent3D dimensions = {};
-    dimensions.width = WINDOW_WIDTH;
-    dimensions.height = WINDOW_HEIGHT;
+    dimensions.width = PREFERRED_WIDTH;
+    dimensions.height = PREFERRED_HEIGHT;
     dimensions.depth = 1;
     img_create_infos[i].extent = dimensions;
     img_create_infos[i].mipLevels = 1;
@@ -2396,8 +2396,8 @@ void record_copy_to_swapchain_image(uint32_t img_idx,
   copy_offset.z = 0;
 
   VkExtent3D copy_extent = {};
-  copy_extent.width = WINDOW_WIDTH;
-  copy_extent.height = WINDOW_HEIGHT;
+  copy_extent.width = PREFERRED_WIDTH;
+  copy_extent.height = PREFERRED_HEIGHT;
   copy_extent.depth = 1;
   
   VkImageCopy copy_info = {};
