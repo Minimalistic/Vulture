@@ -1143,7 +1143,7 @@ void create_swapchain()
 			     &swapchain);
   if (res == VK_SUCCESS)
     std::cout << "Swapchain created successfully!" << std::endl;    
-    else
+  else
     std::cout << "Failed to create swapchain..." << std::endl;
 }
 
@@ -2381,43 +2381,32 @@ void record_clear_color_image(uint32_t img_idx, uint32_t command_buf_idx)
 		       &range);		       
 }
 
-void record_copy_to_swapchain_image(uint32_t img_idx,
-				    VkImageLayout img_layout,
-				    VkImageLayout swapchain_img_layout,
-				    uint32_t command_buf_idx)
+void record_begin_renderpass(uint32_t command_buf_idx)
 {
-  VkImageSubresourceLayers subresource = {};
-  subresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-  subresource.mipLevel = 0;
-  subresource.baseArrayLayer = 0;
-  subresource.layerCount = 1;
-
-  VkOffset3D copy_offset = {};
-  copy_offset.x = 0;
-  copy_offset.y = 0;
-  copy_offset.z = 0;
-
-  VkExtent3D copy_extent = {};
-  copy_extent.width = PREFERRED_WIDTH;
-  copy_extent.height = PREFERRED_HEIGHT;
-  copy_extent.depth = 1;
+  VkClearValue clear_color = {};
+  clear_color.color = {0.0f, 1.0f, 0.0f, 1.0f};
   
-  VkImageCopy copy_info = {};
-  copy_info.srcSubresource = subresource;
-  copy_info.srcOffset = copy_offset;
-  copy_info.dstSubresource = subresource;
-  copy_info.dstOffset = copy_offset;
-  copy_info.extent = copy_extent;
-  
-  std::cout << "Copying image " << img_idx << " to current swapchain image"
-	    << "..." << std::endl;
-  vkCmdCopyImage(command_buffers[command_buf_idx],
-		 images[img_idx],
-		 img_layout,
-		 swapchain_images[cur_swapchain_img],
-		 swapchain_img_layout,
-		 1,
-		 &copy_info);
+  VkRenderPassBeginInfo info = {};
+  info.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
+  info.pNext = nullptr;
+  info.renderPass = renderpass;
+  info.framebuffer = framebuffers[cur_swapchain_img];
+  info.renderArea.offset.x = 0;
+  info.renderArea.offset.y = 0;
+  info.renderArea.extent.width = surface_capabilities.currentExtent.width;
+  info.renderArea.extent.height = surface_capabilities.currentExtent.height;
+  info.clearValueCount = 1;
+  info.pClearValues = &clear_color;
+  std::cout << "Recording begin renderpass..." << std::endl;
+  vkCmdBeginRenderPass(command_buffers[command_buf_idx],
+		       &info,
+		       VK_SUBPASS_CONTENTS_INLINE);  
+}
+
+void record_end_renderpass(uint32_t command_buf_idx)
+{
+  std::cout << "Recording end renderpass..." << std::endl;
+  vkCmdEndRenderPass(command_buffers[command_buf_idx]);
 }
 
 void destroy_framebuffers()
@@ -3138,7 +3127,24 @@ int main(int argc, const char* argv[])
   reset_command_buffer(COMMAND_BUFFER_GRAPHICS);
   present_current_swapchain_image(submit_queue_idx);
 
-  std::this_thread::sleep_for(std::chrono::milliseconds(10000));
+  std::this_thread::sleep_for(std::chrono::milliseconds(5000));
+
+  next_swapchain_image();
+  begin_recording(COMMAND_BUFFER_GRAPHICS);
+  record_begin_renderpass(COMMAND_BUFFER_GRAPHICS);
+  record_end_renderpass(COMMAND_BUFFER_GRAPHICS);
+  record_swapchain_image_barrier(COMMAND_BUFFER_GRAPHICS,
+				 VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+				 VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+				 VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
+				 VK_ACCESS_MEMORY_READ_BIT);
+  end_recording(COMMAND_BUFFER_GRAPHICS);
+  submit_to_queue(COMMAND_BUFFER_GRAPHICS, submit_queue_idx);
+  wait_for_queue(submit_queue_idx);
+  reset_command_buffer(COMMAND_BUFFER_GRAPHICS);
+  present_current_swapchain_image(submit_queue_idx);
+
+  std::this_thread::sleep_for(std::chrono::milliseconds(5000));
   
   // Cleanup
   wait_for_device();
