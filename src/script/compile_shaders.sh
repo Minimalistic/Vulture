@@ -33,4 +33,16 @@ for filename in ${SHADER_SOURCE_DIR}/*.vert; do
     mv ${TMP_FILE} ${filename}
 done
 
+for filename in ${SHADER_SOURCE_DIR}/*.frag; do
+    TMP_FILE="${filename}.tmp"
+    cp ${filename} ${TMP_FILE}
+    echo "#version ${GLSL_VERSION} core" > ${filename}
+    echo "#define BUFFER_COUNT ${BUF_COUNT}" >> ${filename}
+    cat ${TMP_FILE} >> ${filename}
+
+    SPV_FILE="${filename}.spv"
+    $2 -V "${filename}" -o "${SPV_FILE}"
+    mv ${TMP_FILE} ${filename}
+done
+
 mv ${SHADER_SOURCE_DIR}/*.spv ${SHADER_BINARY_DIR}

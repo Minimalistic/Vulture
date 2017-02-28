@@ -25,4 +25,12 @@ FOR %%F IN (*.vert) DO (
     %SHADER_COMPILER% -V "%%F" -o "%%F.spv"
     MOVE "%%F.tmp" "%%F"
 )
+FOR %%F IN (*.frag) DO (
+    COPY "%%F" "%%F.tmp"
+    ECHO #version %GLSL_VERSION% core > "%%F"
+    ECHO #define BUFFER_COUNT %BUF_COUNT% >> "%%F"
+    TYPE "%%F.tmp" >> "%%F"
+    %SHADER_COMPILER% -V "%%F" -o "%%F.spv"
+    MOVE "%%F.tmp" "%%F"
+)
 MOVE *.spv "%BUILD_DIR%\%SHADER_BINARY_DIR%" >NUL 2>&1

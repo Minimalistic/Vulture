@@ -27,6 +27,7 @@ xcb_screen_t* screen;
 #include <X11/Xlib.h>
 Display* display;
 Window window;
+
 #endif
 
 #include <vulkan/vulkan.h>
@@ -43,7 +44,7 @@ Window window;
 #define SHOW_INSTANCE_EXTENSIONS        false
 #define SHOW_PHYSICAL_DEVICE_EXTENSIONS false
 
-#define ENABLE_STANDARD_VALIDATION      false
+#define ENABLE_STANDARD_VALIDATION      true
 
 #define CUSTOM_ALLOCATOR                false
 
@@ -57,6 +58,12 @@ Window window;
 #define GRAPHICS_PIPELINE_COUNT         1
 
 #define CLEAR_IMAGE                     0
+
+#define VERTEX_BUFFER                   0
+#define INDEX_BUFFER                    1
+
+#define VERTEX_COUNT                    3
+#define INDEX_COUNT                     3
 
 #define DESCRIPTOR_SET_COUNT            1
 
@@ -73,8 +80,9 @@ Window window;
 #define PREFERRED_WIDTH 800
 #define PREFERRED_HEIGHT 600
 
-#define BUFFER_FORMAT VK_FORMAT_R8G8B8A8_UNORM
-#define IMAGE_FORMAT  VK_FORMAT_B8G8R8A8_UNORM
+#define BUFFER_FORMAT        VK_FORMAT_R8G8B8A8_UNORM
+#define IMAGE_FORMAT         VK_FORMAT_B8G8R8A8_UNORM
+#define DEPTH_STENCIL_FORMAT VK_FORMAT_B8G8R8A8_UNORM
 
 #ifdef VK_USE_PLATFORM_WIN32_KHR
 #define SWAPCHAIN_IMAGE_FORMAT      VK_FORMAT_B8G8R8A8_UNORM
@@ -111,6 +119,7 @@ std::vector<std::mutex> swapchain_image_view_mutex(MAX_SWAPCHAIN_IMAGES);
 std::mutex semaphore_mutex;
 std::mutex compute_shader_mutex;
 std::mutex vertex_shader_mutex;
+std::mutex fragment_shader_mutex;
 std::vector<std::mutex> compute_pipeline_mutex(COMPUTE_PIPELINE_COUNT);
 std::vector<std::mutex> graphics_pipeline_mutex(GRAPHICS_PIPELINE_COUNT);
 std::mutex compute_pipeline_cache_mutex;
@@ -163,6 +172,7 @@ std::vector<VkImageView> swapchain_image_views;
 VkSemaphore semaphore;
 VkShaderModule compute_shader;
 VkShaderModule vertex_shader;
+VkShaderModule fragment_shader;
 std::vector<VkPipeline> compute_pipelines;
 std::vector<VkPipeline> graphics_pipelines;
 VkPipelineCache compute_pipeline_cache;
@@ -184,6 +194,8 @@ typedef struct vertex_t {
   float normal[3];
   float texcoord[2];
 } vertex;
+
+vertex vertices[VERTEX_COUNT];
 
 #ifdef VK_USE_PLATFORM_WIN32_KHR
 LRESULT CALLBACK WndProc(HWND hwnd,
@@ -326,6 +338,7 @@ void create_instance()
   inst_info.ppEnabledExtensionNames = enabled_extension_names;
   if (ENABLE_STANDARD_VALIDATION) {
     std::cout << "Enabling LunarG standard validation instance layer..." 
+
 	      << std::endl;
     const char* enabled_layer_names[] = {
       "VK_LAYER_LUNARG_standard_validation"
@@ -1554,6 +1567,43 @@ void create_vertex_shader(const std::string& filename)
 	      << std::endl;
 }
 
+void create_fragment_shader(const std::string& filename)
+{
+  std::cout << "Reading fragment shader file: " << filename
+	    << "..." << std::endl;
+  std::ifstream is(filename,
+		   std::ios::binary | std::ios::in | std::ios::ate);
+  if (is.is_open()) {
+    auto size = is.tellg();
+    is.seekg(0, std::ios::beg);
+    char* code = new char[size];
+    is.read(code, size);
+    is.close();
+
+    VkShaderModuleCreateInfo create_info = {};
+    create_info.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
+    create_info.pNext = nullptr;
+    create_info.flags = 0;
+    create_info.codeSize = size;
+    create_info.pCode = (uint32_t*) code;
+
+    std::cout << "Creating fragment shader module..." << std::endl;
+    res = vkCreateShaderModule(device,
+			       &create_info,
+			       CUSTOM_ALLOCATOR ? &alloc_callbacks : nullptr,
+			       &fragment_shader);
+    if (res == VK_SUCCESS)
+      std::cout << "Fragment shader module created successfully!"
+		<< std::endl;
+    else
+      std::cout << "Failed to create fragment shader module..." << std::endl;
+    
+    delete[](code);
+  } else
+    std::cout << "Failed to read fragment shader file: " << filename << "..."
+	      << std::endl;
+}
+
 void create_descriptor_set_layouts()
 {
   descriptor_set_layouts.resize(DESCRIPTOR_SET_COUNT);
@@ -2100,6 +2150,17 @@ void create_graphics_pipelines()
   vertex_shader_stage.pSpecializationInfo = nullptr;
   shader_stages.push_back(vertex_shader_stage);
 
+  VkPipelineShaderStageCreateInfo fragment_shader_stage = {};
+  fragment_shader_stage.sType =
+    VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+  fragment_shader_stage.pNext = nullptr;
+  fragment_shader_stage.flags = 0;
+  fragment_shader_stage.stage = VK_SHADER_STAGE_FRAGMENT_BIT;
+  fragment_shader_stage.module = fragment_shader;
+  fragment_shader_stage.pName = "main";
+  fragment_shader_stage.pSpecializationInfo = nullptr;
+  shader_stages.push_back(fragment_shader_stage);
+
   VkVertexInputBindingDescription vertex_binding = {};
   vertex_binding.binding = 0;
   vertex_binding.stride = sizeof(vertex);
@@ -2176,7 +2237,7 @@ void create_graphics_pipelines()
   rasterization_create_info.pNext = nullptr;
   rasterization_create_info.flags = 0;
   rasterization_create_info.depthClampEnable = VK_FALSE;
-  rasterization_create_info.rasterizerDiscardEnable = VK_TRUE;
+  rasterization_create_info.rasterizerDiscardEnable = VK_FALSE;
   rasterization_create_info.polygonMode = VK_POLYGON_MODE_FILL;
   rasterization_create_info.cullMode = VK_CULL_MODE_NONE;
   rasterization_create_info.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
@@ -2185,6 +2246,18 @@ void create_graphics_pipelines()
   rasterization_create_info.depthBiasClamp = 0.0f;
   rasterization_create_info.depthBiasSlopeFactor = 0.0f;
   rasterization_create_info.lineWidth = 1.0f;
+
+  VkPipelineMultisampleStateCreateInfo multisample_create_info = {};
+  multisample_create_info.sType =
+    VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
+  multisample_create_info.pNext = nullptr;
+  multisample_create_info.flags = 0;
+  multisample_create_info.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
+  multisample_create_info.sampleShadingEnable = VK_FALSE;
+  multisample_create_info.minSampleShading = 0.0f;
+  multisample_create_info.pSampleMask = nullptr;
+  multisample_create_info.alphaToCoverageEnable = VK_FALSE;
+  multisample_create_info.alphaToOneEnable = VK_FALSE;
 
   std::vector<VkGraphicsPipelineCreateInfo> infos(GRAPHICS_PIPELINE_COUNT);
   for (unsigned int i = 0; i != GRAPHICS_PIPELINE_COUNT; i++) {
@@ -2198,7 +2271,7 @@ void create_graphics_pipelines()
     infos[i].pTessellationState = nullptr;
     infos[i].pViewportState = &viewport_create_info;
     infos[i].pRasterizationState = &rasterization_create_info;
-    infos[i].pMultisampleState = nullptr;
+    infos[i].pMultisampleState = &multisample_create_info;
     infos[i].pDepthStencilState = nullptr;
     infos[i].pColorBlendState = nullptr;
     infos[i].pDynamicState = nullptr;
@@ -2228,6 +2301,16 @@ void create_graphics_pipelines()
     std::cout << "Failed to create graphics pipeline"
 	      << (GRAPHICS_PIPELINE_COUNT != 1 ? "s..." : "...")
 	      << std::endl;
+}
+
+void record_bind_graphics_pipeline(uint32_t pipeline_idx,
+				   uint32_t command_buf_idx)
+{
+  std::cout << "Recording bind graphics pipeline to command buffer "
+	    << command_buf_idx << "..." << std::endl;
+  vkCmdBindPipeline(command_buffers[command_buf_idx],
+		    VK_PIPELINE_BIND_POINT_GRAPHICS,
+		    graphics_pipelines[pipeline_idx]);
 }
 
 void next_swapchain_image()
@@ -2381,6 +2464,78 @@ void record_clear_color_image(uint32_t img_idx, uint32_t command_buf_idx)
 		       &range);		       
 }
 
+void update_vertex_buffer()
+{
+  vertices[0] = {-0.5f, 0.0f, 0.0f, 1.0f};
+  vertices[1] = {0.5f, 0.0f, 0.0f, 1.0f};
+  vertices[2] = {0.0f, 0.5f, 0.0f, 1.0f};
+  
+  void* buf_data;
+  std::lock_guard<std::mutex> lock(memory_mutex[RESOURCE_BUFFER]);
+  res = vkMapMemory(device,
+		    memory[RESOURCE_BUFFER],
+		    VERTEX_BUFFER*buf_mem_requirements[0].size,
+		    buf_mem_requirements[VERTEX_BUFFER].size,
+		    0,
+		    &buf_data);
+  if (res == VK_SUCCESS)
+    std::cout << "Updating vertex buffer..." << std::endl;
+  else
+    std::cout << "Failed to update vertex buffer..." << std::endl;
+
+  memset(buf_data, 0, buf_mem_requirements[VERTEX_BUFFER].size);
+  memcpy(buf_data, vertices, sizeof(vertex)*VERTEX_COUNT);
+
+  vkUnmapMemory(device,
+		memory[RESOURCE_BUFFER]);
+}
+
+void update_index_buffer()
+{
+  uint32_t indices[INDEX_COUNT] = {0, 1, 2};
+  
+  void* buf_data;
+  std::lock_guard<std::mutex> lock(memory_mutex[RESOURCE_BUFFER]);
+  res = vkMapMemory(device,
+		    memory[RESOURCE_BUFFER],
+		    INDEX_BUFFER*buf_mem_requirements[0].size,
+		    buf_mem_requirements[INDEX_BUFFER].size,
+		    0,
+		    &buf_data);
+  if (res == VK_SUCCESS)
+    std::cout << "Updating index buffer..." << std::endl;
+  else
+    std::cout << "Failed to update index buffer..." << std::endl;
+
+  memset(buf_data, 0, buf_mem_requirements[INDEX_BUFFER].size);
+  memcpy(buf_data, indices, sizeof(uint32_t)*INDEX_COUNT);
+
+  vkUnmapMemory(device,
+		memory[RESOURCE_BUFFER]);
+}
+
+void record_bind_vertex_buffer(uint32_t command_buf_idx)
+{
+  std::cout << "Recording bind vertex buffer to command buffer "
+	    << command_buf_idx << "..." << std::endl;
+  VkDeviceSize offset = 0;
+  vkCmdBindVertexBuffers(command_buffers[command_buf_idx],
+			 0,
+			 1,
+			 &buffers[VERTEX_BUFFER],
+			 &offset);
+}
+
+void record_bind_index_buffer(uint32_t command_buf_idx)
+{
+  std::cout << "Recording bind index buffer to command buffer "
+	    << command_buf_idx << "..." << std::endl;
+  vkCmdBindIndexBuffer(command_buffers[command_buf_idx],
+		       buffers[INDEX_BUFFER],
+		       0,
+		       VK_INDEX_TYPE_UINT32);
+}
+
 void record_begin_renderpass(uint32_t command_buf_idx)
 {
   VkClearValue clear_color = {};
@@ -2401,6 +2556,17 @@ void record_begin_renderpass(uint32_t command_buf_idx)
   vkCmdBeginRenderPass(command_buffers[command_buf_idx],
 		       &info,
 		       VK_SUBPASS_CONTENTS_INLINE);  
+}
+
+void record_draw_indexed(uint32_t command_buf_idx)
+{
+  std::cout << "Recording draw indexed vertices..." << std::endl;
+  vkCmdDrawIndexed(command_buffers[command_buf_idx],
+		   INDEX_COUNT,
+		   1,
+		   0,
+		   0,
+		   0);
 }
 
 void record_end_renderpass(uint32_t command_buf_idx)
@@ -2567,6 +2733,15 @@ void destroy_compute_shader()
   std::lock_guard<std::mutex> lock(compute_shader_mutex);
   vkDestroyShaderModule(device,
 			compute_shader,
+			CUSTOM_ALLOCATOR ? &alloc_callbacks : nullptr);
+}
+
+void destroy_fragment_shader()
+{
+  std::cout << "Destroying fragment shader module..." << std::endl;
+  std::lock_guard<std::mutex> lock(fragment_shader_mutex);
+  vkDestroyShaderModule(device,
+			fragment_shader,
 			CUSTOM_ALLOCATOR ? &alloc_callbacks : nullptr);
 }
 
@@ -3090,10 +3265,13 @@ int main(int argc, const char* argv[])
   delete_compute_pipeline_cache_data();
 
   create_vertex_shader("shaders/simple.vert.spv");
+  create_fragment_shader("shaders/simple.frag.spv");
   create_renderpass();
   create_framebuffers();
   create_graphics_pipeline_layout();
   create_graphics_pipelines();
+  
+  update_vertex_buffer();
 
   begin_recording(COMMAND_BUFFER_GRAPHICS);
   record_image_barrier(CLEAR_IMAGE,
@@ -3128,10 +3306,16 @@ int main(int argc, const char* argv[])
   present_current_swapchain_image(submit_queue_idx);
 
   std::this_thread::sleep_for(std::chrono::milliseconds(5000));
-
+  
+  uint32_t graphics_pipeline_idx = 0;
   next_swapchain_image();
   begin_recording(COMMAND_BUFFER_GRAPHICS);
+  record_bind_vertex_buffer(COMMAND_BUFFER_GRAPHICS);
+  record_bind_index_buffer(COMMAND_BUFFER_GRAPHICS);
+  record_bind_graphics_pipeline(graphics_pipeline_idx,
+				COMMAND_BUFFER_GRAPHICS);
   record_begin_renderpass(COMMAND_BUFFER_GRAPHICS);
+  record_draw_indexed(COMMAND_BUFFER_GRAPHICS);
   record_end_renderpass(COMMAND_BUFFER_GRAPHICS);
   record_swapchain_image_barrier(COMMAND_BUFFER_GRAPHICS,
 				 VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
@@ -3155,6 +3339,7 @@ int main(int argc, const char* argv[])
   destroy_graphics_pipeline_layout();
   destroy_framebuffers();
   destroy_renderpass();
+  destroy_fragment_shader();
   destroy_vertex_shader();
 
   destroy_image_sampler();
