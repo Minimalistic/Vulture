@@ -44,7 +44,7 @@ Window window;
 #define SHOW_INSTANCE_EXTENSIONS        false
 #define SHOW_PHYSICAL_DEVICE_EXTENSIONS false
 
-#define ENABLE_STANDARD_VALIDATION      true
+#define ENABLE_STANDARD_VALIDATION      false
 
 #define CUSTOM_ALLOCATOR                false
 
