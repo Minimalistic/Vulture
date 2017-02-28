@@ -58,6 +58,7 @@ Window window;
 #define GRAPHICS_PIPELINE_COUNT         1
 
 #define CLEAR_IMAGE                     0
+#define DEPTH_STENCIL_IMAGE             1
 
 #define VERTEX_BUFFER                   0
 #define INDEX_BUFFER                    1
@@ -82,7 +83,7 @@ Window window;
 
 #define BUFFER_FORMAT        VK_FORMAT_R8G8B8A8_UNORM
 #define IMAGE_FORMAT         VK_FORMAT_B8G8R8A8_UNORM
-#define DEPTH_STENCIL_FORMAT VK_FORMAT_B8G8R8A8_UNORM
+#define DEPTH_STENCIL_FORMAT VK_FORMAT_D32_SFLOAT_S8_UINT
 
 #ifdef VK_USE_PLATFORM_WIN32_KHR
 #define SWAPCHAIN_IMAGE_FORMAT      VK_FORMAT_B8G8R8A8_UNORM
@@ -583,8 +584,10 @@ void create_images()
     img_create_infos[i].sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
     img_create_infos[i].pNext = nullptr;
     img_create_infos[i].flags = 0;
-    img_create_infos[i].imageType = VK_IMAGE_TYPE_3D;
-    img_create_infos[i].format = IMAGE_FORMAT;
+    img_create_infos[i].imageType =
+      i == DEPTH_STENCIL_IMAGE ? VK_IMAGE_TYPE_2D : VK_IMAGE_TYPE_3D;
+    img_create_infos[i].format =
+      i == DEPTH_STENCIL_IMAGE ? DEPTH_STENCIL_FORMAT : IMAGE_FORMAT;
     VkExtent3D dimensions = {};
     dimensions.width = PREFERRED_WIDTH;
     dimensions.height = PREFERRED_HEIGHT;
@@ -594,7 +597,10 @@ void create_images()
     img_create_infos[i].arrayLayers = 1;
     img_create_infos[i].samples = VK_SAMPLE_COUNT_1_BIT;
     img_create_infos[i].tiling = VK_IMAGE_TILING_OPTIMAL;
-    img_create_infos[i].usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT
+    img_create_infos[i].usage =
+      (i == DEPTH_STENCIL_IMAGE ?
+       VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT :
+       VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT)
       | VK_IMAGE_USAGE_TRANSFER_SRC_BIT
       | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
     img_create_infos[i].sharingMode = VK_SHARING_MODE_EXCLUSIVE;
@@ -631,12 +637,13 @@ void get_subresource_layouts()
 {
   subresource_layouts.resize(IMAGE_COUNT);
   
-  VkImageSubresource img_subresource = {};
-  img_subresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-  img_subresource.mipLevel = 0;
-  img_subresource.arrayLayer = 0;
-
   for (unsigned int i = 0; i != IMAGE_COUNT; i++) {
+    VkImageSubresource img_subresource = {};
+    img_subresource.aspectMask =
+      i == DEPTH_STENCIL_IMAGE ? VK_IMAGE_ASPECT_DEPTH_BIT : VK_IMAGE_ASPECT_COLOR_BIT;
+    img_subresource.mipLevel = 0;
+    img_subresource.arrayLayer = 0;
+
     std::cout << "Getting subresource layout for image " << i << "..."
 	      << std::endl;
     vkGetImageSubresourceLayout(device,
@@ -875,8 +882,10 @@ void create_image_views()
     img_view_create_info.pNext = nullptr;
     img_view_create_info.flags = 0;
     img_view_create_info.image = images[i];
-    img_view_create_info.viewType = VK_IMAGE_VIEW_TYPE_3D;
-    img_view_create_info.format = IMAGE_FORMAT;
+    img_view_create_info.viewType =
+      i == DEPTH_STENCIL_IMAGE ? VK_IMAGE_VIEW_TYPE_2D : VK_IMAGE_VIEW_TYPE_3D;
+    img_view_create_info.format =
+      i == DEPTH_STENCIL_IMAGE ? DEPTH_STENCIL_FORMAT : IMAGE_FORMAT;
     VkComponentMapping component_mapping = {};
     component_mapping.r = VK_COMPONENT_SWIZZLE_IDENTITY;
     component_mapping.g = VK_COMPONENT_SWIZZLE_IDENTITY;
@@ -884,7 +893,10 @@ void create_image_views()
     component_mapping.a = VK_COMPONENT_SWIZZLE_IDENTITY;
     img_view_create_info.components = component_mapping;
     VkImageSubresourceRange subresource_range = {};
-    subresource_range.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    subresource_range.aspectMask =
+      (i == DEPTH_STENCIL_IMAGE) ?
+      (VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT) :
+      VK_IMAGE_ASPECT_COLOR_BIT;
     subresource_range.baseMipLevel = 0;
     subresource_range.levelCount = 1;
     subresource_range.baseArrayLayer = 0;
