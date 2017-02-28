@@ -3272,6 +3272,7 @@ int main(int argc, const char* argv[])
   create_graphics_pipelines();
   
   update_vertex_buffer();
+  update_index_buffer();
 
   begin_recording(COMMAND_BUFFER_GRAPHICS);
   record_image_barrier(CLEAR_IMAGE,
@@ -3310,10 +3311,10 @@ int main(int argc, const char* argv[])
   uint32_t graphics_pipeline_idx = 0;
   next_swapchain_image();
   begin_recording(COMMAND_BUFFER_GRAPHICS);
-  record_bind_vertex_buffer(COMMAND_BUFFER_GRAPHICS);
-  record_bind_index_buffer(COMMAND_BUFFER_GRAPHICS);
   record_bind_graphics_pipeline(graphics_pipeline_idx,
 				COMMAND_BUFFER_GRAPHICS);
+  record_bind_vertex_buffer(COMMAND_BUFFER_GRAPHICS);
+  record_bind_index_buffer(COMMAND_BUFFER_GRAPHICS);
   record_begin_renderpass(COMMAND_BUFFER_GRAPHICS);
   record_draw_indexed(COMMAND_BUFFER_GRAPHICS);
   record_end_renderpass(COMMAND_BUFFER_GRAPHICS);
