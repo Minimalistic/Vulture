@@ -47,7 +47,10 @@ add_definitions(-DCOMMAND_BUFFER_COUNT=${NUM_COMMAND_BUFFERS})
 
 set(CPP_SOURCE_DIR "src/main")
 
+set (GLM_VERSION 0.9.8.4)
+
 include_directories(include)
+include_directories(lib/glm-${GLM_VERSION})
 
 add_library(Utility ${CPP_SOURCE_DIR}/util.cpp)
 add_library(Allocator ${CPP_SOURCE_DIR}/allocator.cpp)

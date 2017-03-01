@@ -2277,8 +2277,8 @@ void create_graphics_pipelines()
   VkViewport viewport = {};
   viewport.x = 0.0f;
   viewport.y = 0.0f;
-  viewport.width = surface_capabilities.currentExtent.width;
-  viewport.height = surface_capabilities.currentExtent.height;
+  viewport.width = (float) surface_capabilities.currentExtent.width;
+  viewport.height = (float) surface_capabilities.currentExtent.height;
   viewport.minDepth = 0.0f;
   viewport.maxDepth = 1.0f;
 
