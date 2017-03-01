@@ -199,6 +199,7 @@ const std::string errfile = "vulture.err";
 
 typedef struct vertex_t {
   float position[4];
+  float color[4];
   float normal[3];
   float texcoord[2];
 } vertex;
@@ -2238,19 +2239,25 @@ void create_graphics_pipelines()
   position_attribute.binding = 0;
   position_attribute.format = VK_FORMAT_R32G32B32A32_SFLOAT;
   position_attribute.offset = offsetof(vertex, position);
+  VkVertexInputAttributeDescription color_attribute = {};
+  color_attribute.location = 1;
+  color_attribute.binding = 0;
+  color_attribute.format = VK_FORMAT_R32G32B32A32_SFLOAT;
+  color_attribute.offset = offsetof(vertex, color);
   VkVertexInputAttributeDescription normal_attribute = {};
-  normal_attribute.location = 1;
+  normal_attribute.location = 2;
   normal_attribute.binding = 0;
   normal_attribute.format = VK_FORMAT_R32G32B32_SFLOAT;
   normal_attribute.offset = offsetof(vertex, normal);
   VkVertexInputAttributeDescription texcoord_attribute = {};
-  texcoord_attribute.location = 2;
+  texcoord_attribute.location = 3;
   texcoord_attribute.binding = 0;
   texcoord_attribute.format = VK_FORMAT_R32G32_SFLOAT;
   texcoord_attribute.offset = offsetof(vertex, texcoord);
   
   std::vector<VkVertexInputAttributeDescription> vertex_attributes;
   vertex_attributes.push_back(position_attribute);
+  vertex_attributes.push_back(color_attribute);
   vertex_attributes.push_back(normal_attribute);
   vertex_attributes.push_back(texcoord_attribute);
   
@@ -2583,9 +2590,24 @@ void record_clear_color_image(uint32_t img_idx, uint32_t command_buf_idx)
 
 void update_vertex_buffer()
 {
-  vertices[0] = {{-0.7f, 0.7f, 0.0f, 1.0f}, {0.0f, 0.0f, 0.0f}, {0.0f, 0.0f}};
-  vertices[1] = {{0.7f, 0.7f, 0.0f, 1.0f}, {0.0f, 0.0f, 0.0f}, {0.0f, 0.0f}};
-  vertices[2] = {{0.0f, -0.7f, 0.0f, 1.0f}, {0.0f, 0.0f, 0.0f}, {0.0f, 0.0f}};
+  vertices[0] = {
+    {-0.7f, 0.7f, 0.0f, 1.0f}, // position
+    {1.0f, 0.0f, 0.0f, 1.0f},  // color
+    {0.0f, 0.0f, 0.0f},        // normal
+    {0.0f, 0.0f}               // texcoord
+  };
+  vertices[1] = {
+    {0.7f, 0.7f, 0.0f, 1.0f},
+    {0.0f, 1.0f, 0.0f, 1.0f},
+    {0.0f, 0.0f, 0.0f},
+    {0.0f, 0.0f}
+  };
+  vertices[2] = {
+    {0.0f, -0.7f, 0.0f, 1.0f},
+    {0.0f, 0.0f, 1.0f, 1.0f},
+    {0.0f, 0.0f, 0.0f},
+    {0.0f, 0.0f}
+  };
   
   void* buf_data;
   std::lock_guard<std::mutex> lock(memory_mutex[RESOURCE_BUFFER]);
@@ -2697,7 +2719,7 @@ void record_bind_index_buffer(uint32_t command_buf_idx)
 void record_begin_renderpass(uint32_t command_buf_idx)
 {
   VkClearValue clear_values[2];
-  clear_values[0].color = {1.0f, 0.0f, 0.0f, 1.0f};
+  clear_values[0].color = {0.0f, 0.0f, 0.0f, 1.0f};
   clear_values[1].depthStencil = {1.0f, 0};
   
   VkRenderPassBeginInfo info = {};
