@@ -2591,19 +2591,19 @@ void record_clear_color_image(uint32_t img_idx, uint32_t command_buf_idx)
 void update_vertex_buffer()
 {
   vertices[0] = {
-    {-0.7f, 0.7f, 0.0f, 1.0f}, // position
+    {-1.7f, 0.7f, 0.0f, 1.0f}, // position
     {1.0f, 0.0f, 0.0f, 1.0f},  // color
     {0.0f, 0.0f, 0.0f},        // normal
     {0.0f, 0.0f}               // texcoord
   };
   vertices[1] = {
-    {0.7f, 0.7f, 0.0f, 1.0f},
+    {-0.3f, 0.7f, 0.0f, 1.0f},
     {0.0f, 1.0f, 0.0f, 1.0f},
     {0.0f, 0.0f, 0.0f},
     {0.0f, 0.0f}
   };
   vertices[2] = {
-    {0.0f, -0.7f, 0.0f, 1.0f},
+    {-1.0f, -0.7f, 0.0f, 1.0f},
     {0.0f, 0.0f, 1.0f, 1.0f},
     {0.0f, 0.0f, 0.0f},
     {0.0f, 0.0f}
@@ -2739,12 +2739,12 @@ void record_begin_renderpass(uint32_t command_buf_idx)
 		       VK_SUBPASS_CONTENTS_INLINE);  
 }
 
-void record_draw_indexed(uint32_t command_buf_idx)
+void record_draw_indexed(uint32_t command_buf_idx, uint32_t num_instances)
 {
   std::cout << "Recording draw indexed vertices..." << std::endl;
   vkCmdDrawIndexed(command_buffers[command_buf_idx],
   		   INDEX_COUNT,
-   		   1,
+   		   num_instances,
    		   0,
    		   0,
    		   0);
@@ -3509,7 +3509,7 @@ int main(int argc, const char* argv[])
   			     COMMAND_BUFFER_GRAPHICS);
   record_bind_vertex_buffer(COMMAND_BUFFER_GRAPHICS);
   record_bind_index_buffer(COMMAND_BUFFER_GRAPHICS);
-  record_draw_indexed(COMMAND_BUFFER_GRAPHICS);
+  record_draw_indexed(COMMAND_BUFFER_GRAPHICS, 1);
   record_end_renderpass(COMMAND_BUFFER_GRAPHICS);
   record_swapchain_image_barrier(COMMAND_BUFFER_GRAPHICS,
 				 VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
@@ -3523,7 +3523,31 @@ int main(int argc, const char* argv[])
   reset_command_buffer(COMMAND_BUFFER_GRAPHICS);
 
   std::this_thread::sleep_for(std::chrono::milliseconds(5000));
-  
+
+  next_swapchain_image();
+  begin_recording(COMMAND_BUFFER_GRAPHICS);
+  record_begin_renderpass(COMMAND_BUFFER_GRAPHICS);
+  record_bind_graphics_pipeline(graphics_pipeline_idx,
+				COMMAND_BUFFER_GRAPHICS);
+  record_bind_descriptor_set(DESCRIPTOR_SET_GRAPHICS,
+  			     COMMAND_BUFFER_GRAPHICS);
+  record_bind_vertex_buffer(COMMAND_BUFFER_GRAPHICS);
+  record_bind_index_buffer(COMMAND_BUFFER_GRAPHICS);
+  record_draw_indexed(COMMAND_BUFFER_GRAPHICS, 2);
+  record_end_renderpass(COMMAND_BUFFER_GRAPHICS);
+  record_swapchain_image_barrier(COMMAND_BUFFER_GRAPHICS,
+				 VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+				 VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+				 VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
+				 VK_ACCESS_MEMORY_READ_BIT);
+  end_recording(COMMAND_BUFFER_GRAPHICS);
+  submit_to_queue(COMMAND_BUFFER_GRAPHICS, submit_queue_idx);
+  wait_for_queue(submit_queue_idx);
+  present_current_swapchain_image(submit_queue_idx);
+  reset_command_buffer(COMMAND_BUFFER_GRAPHICS);
+
+  std::this_thread::sleep_for(std::chrono::milliseconds(5000));
+
   // Cleanup
   wait_for_device();
   destroy_swapchain_image_views();

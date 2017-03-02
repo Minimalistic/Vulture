@@ -22,7 +22,8 @@ out gl_PerVertex
 
 void main(void)
 {
+	float t = gl_InstanceIndex * 2.0;
 	out_color = in_color;
-	gl_Position = ubo.projectionMatrix * ubo.viewMatrix * ubo.modelMatrix * position;
+	gl_Position = ubo.projectionMatrix * ubo.viewMatrix * ubo.modelMatrix * vec4(position.x+t, position.yzw);
 }
 
