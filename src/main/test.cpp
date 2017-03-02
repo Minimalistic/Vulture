@@ -212,6 +212,8 @@ struct {
   glm::mat4 view_matrix;
 } uniform_data;
 
+glm::vec3 rotation = glm::vec3();
+
 #ifdef VK_USE_PLATFORM_WIN32_KHR
 LRESULT CALLBACK WndProc(HWND hwnd,
 			 UINT uMsg,
@@ -2653,8 +2655,6 @@ void update_index_buffer()
 
 void update_uniform_buffer()
 {
-  glm::vec3 rotation = glm::vec3();
-  
   uniform_data.projection_matrix =
     glm::perspective(glm::radians(60.0f),
 		     (float) surface_capabilities.currentExtent.width /
@@ -3547,6 +3547,35 @@ int main(int argc, const char* argv[])
   reset_command_buffer(COMMAND_BUFFER_GRAPHICS);
 
   std::this_thread::sleep_for(std::chrono::milliseconds(5000));
+
+  for (unsigned int i = 0; i != 500; i++) {
+    rotation.z += 0.25f;
+    update_uniform_buffer();
+    
+    next_swapchain_image();
+    begin_recording(COMMAND_BUFFER_GRAPHICS);
+    record_begin_renderpass(COMMAND_BUFFER_GRAPHICS);
+    record_bind_graphics_pipeline(graphics_pipeline_idx,
+				  COMMAND_BUFFER_GRAPHICS);
+    record_bind_descriptor_set(DESCRIPTOR_SET_GRAPHICS,
+			       COMMAND_BUFFER_GRAPHICS);
+    record_bind_vertex_buffer(COMMAND_BUFFER_GRAPHICS);
+    record_bind_index_buffer(COMMAND_BUFFER_GRAPHICS);
+    record_draw_indexed(COMMAND_BUFFER_GRAPHICS, 2);
+    record_end_renderpass(COMMAND_BUFFER_GRAPHICS);
+    record_swapchain_image_barrier(COMMAND_BUFFER_GRAPHICS,
+				   VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+				   VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+				   VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
+				   VK_ACCESS_MEMORY_READ_BIT);
+    end_recording(COMMAND_BUFFER_GRAPHICS);
+    submit_to_queue(COMMAND_BUFFER_GRAPHICS, submit_queue_idx);
+    wait_for_queue(submit_queue_idx);
+    present_current_swapchain_image(submit_queue_idx);
+    reset_command_buffer(COMMAND_BUFFER_GRAPHICS);
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
 
   // Cleanup
   wait_for_device();
