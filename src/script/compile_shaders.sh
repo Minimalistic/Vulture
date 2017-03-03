@@ -3,6 +3,7 @@ SHADER_SOURCE_DIR=$1
 SHADER_COMPILER=$2
 GLSL_VERSION=$3
 BUF_COUNT=$4
+INST_COUNT=$5
 SHADER_BINARY_DIR=shaders
 
 if [ ! -d ${SHADER_BINARY_DIR} ]; then
@@ -25,7 +26,7 @@ for filename in ${SHADER_SOURCE_DIR}/*.vert; do
     TMP_FILE="${filename}.tmp"
     cp ${filename} ${TMP_FILE}
     echo "#version ${GLSL_VERSION} core" > ${filename}
-    echo "#define BUFFER_COUNT ${BUF_COUNT}" >> ${filename}
+    echo "#define INSTANCE_COUNT ${INST_COUNT}" >> ${filename}
     cat ${TMP_FILE} >> ${filename}
 
     SPV_FILE="${filename}.spv"
@@ -37,7 +38,6 @@ for filename in ${SHADER_SOURCE_DIR}/*.frag; do
     TMP_FILE="${filename}.tmp"
     cp ${filename} ${TMP_FILE}
     echo "#version ${GLSL_VERSION} core" > ${filename}
-    echo "#define BUFFER_COUNT ${BUF_COUNT}" >> ${filename}
     cat ${TMP_FILE} >> ${filename}
 
     SPV_FILE="${filename}.spv"

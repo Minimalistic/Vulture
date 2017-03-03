@@ -195,11 +195,11 @@ vertex vertices[VERTEX_COUNT];
 
 struct {
   glm::mat4 projection_matrix;
-  glm::mat4 model_matrix;
+  glm::mat4 model_matrix[INSTANCE_COUNT];
   glm::mat4 view_matrix;
 } uniform_data;
 
-glm::vec3 rotation = glm::vec3();
+std::vector<glm::vec3> rotation(INSTANCE_COUNT);
 
 #ifdef VK_USE_PLATFORM_WIN32_KHR
 LRESULT CALLBACK WndProc(HWND hwnd,
@@ -2008,7 +2008,7 @@ void create_graphics_pipelines()
   rasterization_create_info.depthClampEnable = VK_FALSE;
   rasterization_create_info.rasterizerDiscardEnable = VK_FALSE;
   rasterization_create_info.polygonMode = VK_POLYGON_MODE_FILL;
-  rasterization_create_info.cullMode = VK_CULL_MODE_BACK_BIT;
+  rasterization_create_info.cullMode = VK_CULL_MODE_NONE;
   rasterization_create_info.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
   rasterization_create_info.depthBiasEnable = VK_FALSE;
   rasterization_create_info.depthBiasConstantFactor = 0.0f;
@@ -2286,19 +2286,19 @@ void record_clear_color_image(uint32_t img_idx, uint32_t command_buf_idx)
 void update_vertex_buffer()
 {
   vertices[0] = {
-    {-1.7f, 0.7f, 0.0f, 1.0f}, // position
+    {-0.7f, 0.7f, 0.0f, 1.0f}, // position
     {1.0f, 0.0f, 0.0f, 1.0f},  // color
     {0.0f, 0.0f, 0.0f},        // normal
     {0.0f, 0.0f}               // texcoord
   };
   vertices[1] = {
-    {-0.3f, 0.7f, 0.0f, 1.0f},
+    {0.7f, 0.7f, 0.0f, 1.0f},
     {0.0f, 1.0f, 0.0f, 1.0f},
     {0.0f, 0.0f, 0.0f},
     {0.0f, 0.0f}
   };
   vertices[2] = {
-    {-1.0f, -0.7f, 0.0f, 1.0f},
+    {0.0f, -0.7f, 0.0f, 1.0f},
     {0.0f, 0.0f, 1.0f, 1.0f},
     {0.0f, 0.0f, 0.0f},
     {0.0f, 0.0f}
@@ -2354,18 +2354,28 @@ void update_uniform_buffer()
 		     (float) surface_capabilities.currentExtent.height,
 		     0.1f,
 		     256.0f);
+  
   uniform_data.view_matrix = glm::translate(glm::mat4(),
 					    glm::vec3(0.0f, 0.0f, -2.5f));
-  uniform_data.model_matrix = glm::mat4();
-  uniform_data.model_matrix = glm::rotate(uniform_data.model_matrix,
-					  glm::radians(rotation.x),
-					  glm::vec3(1.0f, 0.0f, 0.0f));
-  uniform_data.model_matrix = glm::rotate(uniform_data.model_matrix,
-					  glm::radians(rotation.y),
-					  glm::vec3(0.0f, 1.0f, 0.0f));
-  uniform_data.model_matrix = glm::rotate(uniform_data.model_matrix,
-					  glm::radians(rotation.z),
-					  glm::vec3(0.0f, 0.0f, 1.0f));
+
+  for (unsigned int i = 0; i != INSTANCE_COUNT; i++) {
+    uniform_data.model_matrix[i] = glm::mat4();
+
+    uniform_data.model_matrix[i] = glm::translate(uniform_data.model_matrix[i],
+						  glm::vec3(-0.8f+1.5f*(float)i,
+							    0.0f,
+							    0.0f));
+    
+    uniform_data.model_matrix[i] = glm::rotate(uniform_data.model_matrix[i],
+					       glm::radians(rotation[i].x),
+					       glm::vec3(1.0f, 0.0f, 0.0f));
+    uniform_data.model_matrix[i] = glm::rotate(uniform_data.model_matrix[i],
+					       glm::radians(rotation[i].y),
+					       glm::vec3(0.0f, 1.0f, 0.0f));
+    uniform_data.model_matrix[i] = glm::rotate(uniform_data.model_matrix[i],
+					       glm::radians(rotation[i].z),
+					       glm::vec3(0.0f, 0.0f, 1.0f));
+  }
 
   void* buf_data;
   std::lock_guard<std::mutex> lock(memory_mutex[RESOURCE_BUFFER]);
@@ -3157,7 +3167,8 @@ int main(int argc, const char* argv[])
   std::this_thread::sleep_for(std::chrono::milliseconds(5000));
 
   for (unsigned int i = 0; i != 500; i++) {
-    rotation.z += 0.25f;
+    rotation[0].z += 0.25f;
+    rotation[1].y += 0.25f;
     update_uniform_buffer();
     
     next_swapchain_image();
