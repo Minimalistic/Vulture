@@ -68,12 +68,6 @@ include_directories(lib/tinyobjloader-${TINYOBJLOADER_VERSION})
 
 add_subdirectory(lib/tinyobjloader-${TINYOBJLOADER_VERSION})
 
-add_library(Utility ${CPP_SOURCE_DIR}/util.cpp)
-add_library(Allocator ${CPP_SOURCE_DIR}/allocator.cpp)
-
-set (EXECUTABLES compute
-		 graphics)
-
 # Find Vulkan library and compile shaders
 IF(WIN32)
   find_library(Vulkan_LIBRARY NAMES vulkan-1 HINTS "$ENV{VULKAN_SDK}/Bin" REQUIRED)
@@ -89,6 +83,16 @@ ELSE(WIN32)
     COMMAND ${CMAKE_SOURCE_DIR}/src/script/compile_shaders.sh ${SHADER_DIR} ${SHADER_COMPILER} ${GLSL_VERSION} ${NUM_BUFFERS} ${NUM_INSTANCES}
     WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
 ENDIF(WIN32)
+
+set (LIBRARIES util
+               allocator)
+
+FOREACH(TARGET ${LIBRARIES})
+  add_library(${TARGET} ${CPP_SOURCE_DIR}/${TARGET}.cpp)
+ENDFOREACH(TARGET)
+
+set (EXECUTABLES compute
+		 graphics)
 
 FOREACH(TARGET ${EXECUTABLES})
   IF(WIN32)
@@ -110,11 +114,14 @@ FOREACH(TARGET ${EXECUTABLES})
     target_link_libraries(${TARGET} ${XCB_LIBRARIES})
   ENDIF(WIN32)
 
+  # Link Vulkan
+  target_link_libraries(${TARGET} ${Vulkan_LIBRARY})
+
   # Link threading libraries
   find_package(Threads REQUIRED)
   target_link_libraries(${TARGET} ${CMAKE_THREAD_LIBS_INIT})
 
-  target_link_libraries(${TARGET} Utility)
-  target_link_libraries(${TARGET} Allocator)
-  target_link_libraries(${TARGET} ${Vulkan_LIBRARY})
+  FOREACH(LIB ${LIBRARIES})
+    target_link_libraries(${TARGET} ${LIB})
+  ENDFOREACH(LIB)
 ENDFOREACH(TARGET)
