@@ -1,5 +1,12 @@
 #Vulture: A game engine using the Vulkan API
 
+##Table of Contents
+* [Requirements](#requirements)
+* [Environment](#environment)
+* [Building and Running](#building-and-running)
+* [Vulkan Coding Tips](#vulkan-coding-tips)
+* [Known Issues](#known-issues)
+  
 ##Requirements
 
 ###Linux:
