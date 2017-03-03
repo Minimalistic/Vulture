@@ -7,6 +7,7 @@
 #include <iomanip>
 #include <thread>
 #include <cassert>
+#include <cmath>
 
 #define USE_XCB false
 
@@ -203,6 +204,7 @@ struct {
 } uniform_data;
 
 std::vector<glm::vec3> rotation(INSTANCE_COUNT);
+std::vector<glm::vec3> translation(INSTANCE_COUNT);
 
 #ifdef VK_USE_PLATFORM_WIN32_KHR
 LRESULT CALLBACK WndProc(HWND hwnd,
@@ -2358,16 +2360,15 @@ void update_uniform_buffer()
 		     0.1f,
 		     256.0f);
   
-  uniform_data.view_matrix = glm::translate(glm::mat4(),
-					    glm::vec3(0.0f, 0.0f, -2.5f));
+  uniform_data.view_matrix = glm::lookAt(glm::vec3(0.0f, 0.0f, 2.5f),
+					 glm::vec3(0.0f, 0.0f, 0.0f),
+					 glm::vec3(0.0f, 1.0f, 0.0f));
 
   for (unsigned int i = 0; i != INSTANCE_COUNT; i++) {
     uniform_data.model_matrix[i] = glm::mat4();
 
     uniform_data.model_matrix[i] = glm::translate(uniform_data.model_matrix[i],
-						  glm::vec3(-0.8f+1.5f*(float)i,
-							    0.0f,
-							    0.0f));
+						  translation[i]);
     
     uniform_data.model_matrix[i] = glm::rotate(uniform_data.model_matrix[i],
 					       glm::radians(rotation[i].x),
@@ -3145,6 +3146,10 @@ int main(int argc, const char* argv[])
 
   std::this_thread::sleep_for(std::chrono::milliseconds(5000));
 
+  translation[0].x -= 0.85f;
+  translation[1].x += 0.85f;
+  update_uniform_buffer();
+
   next_swapchain_image();
   begin_recording(COMMAND_BUFFER_GRAPHICS);
   record_begin_renderpass(COMMAND_BUFFER_GRAPHICS);
@@ -3169,9 +3174,13 @@ int main(int argc, const char* argv[])
 
   std::this_thread::sleep_for(std::chrono::milliseconds(5000));
 
-  for (unsigned int i = 0; i != 500; i++) {
+  for (unsigned int i = 0; i != 1000; i++) {
+    float dy = sin(glm::radians((float) i));
+
     rotation[0].z += 0.25f;
-    rotation[1].y += 0.25f;
+    rotation[1].x += 0.25f;
+    translation[0].y = 0.3f * dy;
+    translation[1].y = -0.3f * dy;
     update_uniform_buffer();
     
     next_swapchain_image();
