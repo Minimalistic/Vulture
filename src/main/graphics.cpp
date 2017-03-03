@@ -3054,14 +3054,6 @@ int main(int argc, const char* argv[])
 
   update_descriptor_sets();
 
-  std::cout << "Before submit:" << std::endl;
-  print_all_buffers(device,
-		    memory[RESOURCE_BUFFER],
-		    memory_mutex[RESOURCE_BUFFER],
-		    READ_OFFSET,
-		    READ_LENGTH,
-		    buf_mem_requirements);
-
   create_vertex_shader("shaders/simple.vert.spv");
   create_fragment_shader("shaders/simple.frag.spv");
   create_renderpass();
