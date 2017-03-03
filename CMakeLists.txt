@@ -41,6 +41,9 @@ ELSE(GLSL)
   set(GLSL_VERSION ${DEFAULT_GLSL})
 ENDIF(GLSL)
 
+set(SHADER_DIR "${CMAKE_SOURCE_DIR}/src/shader")
+set(SHADER_COMPILER "$ENV{VULKAN_SDK}/bin/glslangValidator")
+
 add_definitions(-DBUFFER_COUNT=${NUM_BUFFERS})
 add_definitions(-DIMAGE_COUNT=${NUM_IMAGES})
 add_definitions(-DCOMMAND_BUFFER_COUNT=${NUM_COMMAND_BUFFERS})
@@ -50,57 +53,56 @@ set(CPP_SOURCE_DIR "src/main")
 set (GLM_VERSION 0.9.8.4)
 
 include_directories(include)
+include_directories("$ENV{VULKAN_SDK}/include")
 include_directories(lib/glm-${GLM_VERSION})
 
 add_library(Utility ${CPP_SOURCE_DIR}/util.cpp)
 add_library(Allocator ${CPP_SOURCE_DIR}/allocator.cpp)
 
+set (EXECUTABLES compute
+		 graphics)
+
+# Find Vulkan library and compile shaders
 IF(WIN32)
-add_executable(Vulture WIN32 ${CPP_SOURCE_DIR}/test.cpp)
-ELSE(WIN32)
-add_executable(Vulture ${CPP_SOURCE_DIR}/test.cpp)
-ENDIF(WIN32)
-
-target_link_libraries(Vulture Utility)
-target_link_libraries(Vulture Allocator)
-
-# Include Vulkan headers
-include_directories("$ENV{VULKAN_SDK}/include")
-
-# Link threading libraries
-find_package(Threads REQUIRED)
-target_link_libraries(Vulture ${CMAKE_THREAD_LIBS_INIT})
-
-set(SHADER_DIR "${CMAKE_SOURCE_DIR}/src/shader")
-set(SHADER_COMPILER "$ENV{VULKAN_SDK}/bin/glslangValidator")
-
-IF(WIN32)
-
-  # Link Vulkan
   find_library(Vulkan_LIBRARY NAMES vulkan-1 HINTS "$ENV{VULKAN_SDK}/Bin" REQUIRED)
-  target_link_libraries(Vulture ${Vulkan_LIBRARY})
 
   execute_process(
     COMMAND ${CMAKE_SOURCE_DIR}/src/script/compile_shaders.bat ${SHADER_DIR} ${SHADER_COMPILER} ${GLSL_VERSION} ${NUM_BUFFERS}
     WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
 
 ELSE(WIN32)
-
-  # Link Vulkan
   find_library(Vulkan_LIBRARY NAMES vulkan HINTS "$ENV{VULKAN_SDK}/lib" REQUIRED)
-  target_link_libraries(Vulture ${Vulkan_LIBRARY})
-
-  # Link Xlib
-  find_package(X11 REQUIRED)
-  target_link_libraries(Vulture ${X11_LIBRARIES})
-  include_directories(${X11_INCLUDE_DIR})
-
-  # Link XCB
-  find_package(XCB REQUIRED)
-  target_link_libraries(Vulture ${XCB_LIBRARIES})
-
+  
   execute_process(
     COMMAND ${CMAKE_SOURCE_DIR}/src/script/compile_shaders.sh ${SHADER_DIR} ${SHADER_COMPILER} ${GLSL_VERSION} ${NUM_BUFFERS}
     WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
-
 ENDIF(WIN32)
+
+FOREACH(TARGET ${EXECUTABLES})
+  IF(WIN32)
+    IF(NOT ${TARGET} STREQUAL compute)
+      add_executable(${TARGET} WIN32 ${CPP_SOURCE_DIR}/${TARGET}.cpp)
+    ELSE(NOT ${TARGET} STREQUAL compute)
+      add_executable(${TARGET} ${CPP_SOURCE_DIR}/${TARGET}.cpp)
+    ENDIF(NOT ${TARGET} STREQUAL compute)
+  ELSE(WIN32)
+    # Link Xlib
+    find_package(X11 REQUIRED)
+    target_link_libraries(${TARGET} ${X11_LIBRARIES})
+    include_directories(${X11_INCLUDE_DIR})
+
+    # Link XCB
+    find_package(XCB REQUIRED)
+    target_link_libraries(${TARGET} ${XCB_LIBRARIES})
+
+    add_executable(${TARGET} ${CPP_SOURCE_DIR}/${TARGET}.cpp)
+  ENDIF(WIN32)
+
+  # Link threading libraries
+  find_package(Threads REQUIRED)
+  target_link_libraries(${TARGET} ${CMAKE_THREAD_LIBS_INIT})
+
+  target_link_libraries(${TARGET} Utility)
+  target_link_libraries(${TARGET} Allocator)
+  target_link_libraries(${TARGET} ${Vulkan_LIBRARY})
+ENDFOREACH(TARGET)

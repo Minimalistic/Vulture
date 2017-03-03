@@ -8,7 +8,7 @@ layout (location = 3) in vec2 texcoord;
 
 layout (location = 0) out vec4 out_color;
 
-layout (binding = 1) uniform UBO 
+layout (binding = 0) uniform UBO 
 {
 	mat4 projectionMatrix;
 	mat4 modelMatrix;

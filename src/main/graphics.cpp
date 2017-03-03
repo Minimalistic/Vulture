@@ -56,10 +56,8 @@ Window window;
 #define RESOURCE_BUFFER                 0
 #define RESOURCE_IMAGE                  1
 
-#define COMMAND_BUFFER_COMPUTE          0
-#define COMMAND_BUFFER_GRAPHICS         1
+#define COMMAND_BUFFER_GRAPHICS         0
 
-#define COMPUTE_PIPELINE_COUNT          1
 #define GRAPHICS_PIPELINE_COUNT         1
 
 #define CLEAR_IMAGE                     0
@@ -72,10 +70,9 @@ Window window;
 #define VERTEX_COUNT                    3
 #define INDEX_COUNT                     3
 
-#define DESCRIPTOR_SET_COUNT            2
+#define DESCRIPTOR_SET_COUNT            1
 
-#define DESCRIPTOR_SET_COMPUTE          0
-#define DESCRIPTOR_SET_GRAPHICS         1
+#define DESCRIPTOR_SET_GRAPHICS         0
 
 #define MAX_QUEUES                      64
 
@@ -125,14 +122,9 @@ std::mutex surface_mutex;
 std::mutex swapchain_mutex;
 std::vector<std::mutex> swapchain_image_view_mutex(MAX_SWAPCHAIN_IMAGES);
 std::mutex semaphore_mutex;
-std::mutex compute_shader_mutex;
 std::mutex vertex_shader_mutex;
 std::mutex fragment_shader_mutex;
-std::vector<std::mutex> compute_pipeline_mutex(COMPUTE_PIPELINE_COUNT);
 std::vector<std::mutex> graphics_pipeline_mutex(GRAPHICS_PIPELINE_COUNT);
-std::mutex compute_pipeline_cache_mutex;
-std::mutex compute_pipeline_cache_data_mutex;
-std::mutex compute_pipeline_layout_mutex;
 std::mutex graphics_pipeline_layout_mutex;
 std::vector<std::mutex> descriptor_set_layout_mutex(DESCRIPTOR_SET_COUNT);
 std::mutex descriptor_pool_mutex;
@@ -178,14 +170,9 @@ VkSwapchainKHR swapchain;
 std::vector<VkImage> swapchain_images;
 std::vector<VkImageView> swapchain_image_views;
 VkSemaphore semaphore;
-VkShaderModule compute_shader;
 VkShaderModule vertex_shader;
 VkShaderModule fragment_shader;
-std::vector<VkPipeline> compute_pipelines;
 std::vector<VkPipeline> graphics_pipelines;
-VkPipelineCache compute_pipeline_cache;
-void* compute_pipeline_cache_data;
-VkPipelineLayout compute_pipeline_layout;
 VkPipelineLayout graphics_pipeline_layout;
 std::vector<VkDescriptorSetLayout> descriptor_set_layouts;
 VkDescriptorPool descriptor_pool;
@@ -194,8 +181,8 @@ VkSampler image_sampler;
 VkRenderPass renderpass;
 std::vector<VkFramebuffer> framebuffers;
 
-const std::string logfile = "vulture.log";
-const std::string errfile = "vulture.err";
+const std::string logfile = "graphics.log";
+const std::string errfile = "graphics.err";
 
 typedef struct vertex_t {
   float position[4];
@@ -1523,43 +1510,6 @@ void create_semaphore()
     std::cout << "Failed to create semaphore..." << std::endl;
 }
 
-void create_compute_shader(const std::string& filename)
-{
-  std::cout << "Reading compute shader file: " << filename
-	    << "..." << std::endl;
-  std::ifstream is(filename,
-		   std::ios::binary | std::ios::in | std::ios::ate);
-  if (is.is_open()) {
-    auto size = is.tellg();
-    is.seekg(0, std::ios::beg);
-    char* code = new char[size];
-    is.read(code, size);
-    is.close();
-
-    VkShaderModuleCreateInfo create_info = {};
-    create_info.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
-    create_info.pNext = nullptr;
-    create_info.flags = 0;
-    create_info.codeSize = size;
-    create_info.pCode = (uint32_t*) code;
-
-    std::cout << "Creating compute shader module..." << std::endl;
-    res = vkCreateShaderModule(device,
-			       &create_info,
-			       CUSTOM_ALLOCATOR ? &alloc_callbacks : nullptr,
-			       &compute_shader);
-    if (res == VK_SUCCESS)
-      std::cout << "Compute shader module created successfully!"
-		<< std::endl;
-    else
-      std::cout << "Failed to create compute shader module..." << std::endl;
-    
-    delete[](code);
-  } else
-    std::cout << "Failed to read compute shader file: " << filename << "..."
-	      << std::endl;
-}
-
 void create_vertex_shader(const std::string& filename)
 {
   std::cout << "Reading vertex shader file: " << filename
@@ -1645,12 +1595,8 @@ void create_descriptor_set_layouts()
     create_info.flags = 0;
     VkDescriptorSetLayoutBinding layout_binding = {};
     layout_binding.binding = i;
-    layout_binding.descriptorType =
-      i == DESCRIPTOR_SET_COMPUTE ?
-      VK_DESCRIPTOR_TYPE_STORAGE_BUFFER :
-      VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-    layout_binding.descriptorCount =
-      i == DESCRIPTOR_SET_COMPUTE ? static_cast<uint32_t>(BUFFER_COUNT) : 1;
+    layout_binding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+    layout_binding.descriptorCount = 1;
     layout_binding.stageFlags = VK_SHADER_STAGE_ALL;
     layout_binding.pImmutableSamplers = nullptr;
     create_info.bindingCount = 1;
@@ -1672,165 +1618,6 @@ void create_descriptor_set_layouts()
   }
 }
 
-void create_compute_pipeline_cache()
-{
-  std::vector<VkPipelineCache> subcaches(COMPUTE_PIPELINE_COUNT);
-
-  bool subcaches_created = true;
-  for (unsigned int i = 0; i != COMPUTE_PIPELINE_COUNT; i++) {
-    VkPipelineCacheCreateInfo subcache_info = {};
-    subcache_info.sType = VK_STRUCTURE_TYPE_PIPELINE_CACHE_CREATE_INFO;
-    subcache_info.pNext = nullptr;
-    subcache_info.flags = 0;
-    subcache_info.initialDataSize = 0;
-    subcache_info.pInitialData = nullptr;
-
-    std::cout << "Creating compute pipeline subcache " << (i+1) << "/"
-	      << COMPUTE_PIPELINE_COUNT << "..." << std::endl;
-    res = vkCreatePipelineCache(device,
-				&subcache_info,
-				CUSTOM_ALLOCATOR ? &alloc_callbacks : nullptr,
-				&subcaches[i]);
-    if (res == VK_SUCCESS)
-      std::cout << "Compute pipeline subcache " << (i+1) << "/"
-		<< COMPUTE_PIPELINE_COUNT << " created successfully!"
-		<< std::endl;
-    else {
-      subcaches_created = false;
-      std::cout << "Failed to create compute pipeline subcache "
-		<< (i+1) << "/" << COMPUTE_PIPELINE_COUNT  << "..."
-		<< std::endl;
-      break;
-    }
-  }
-
-  if (subcaches_created) {
-    VkPipelineCacheCreateInfo cache_info = {};
-    cache_info.sType = VK_STRUCTURE_TYPE_PIPELINE_CACHE_CREATE_INFO;
-    cache_info.pNext = nullptr;
-    cache_info.flags = 0;
-    cache_info.initialDataSize = 0;
-    cache_info.pInitialData = nullptr;
-
-    std::cout << "Creating compute pipeline cache..."
-	      << std::endl;
-    res = vkCreatePipelineCache(device,
-				&cache_info,
-				CUSTOM_ALLOCATOR ? &alloc_callbacks : nullptr,
-				&compute_pipeline_cache);
-    if (res == VK_SUCCESS) {
-      std::cout << "Compute pipeline cache created successfully!"
-		<< std::endl;
-      std::cout << "Merging "
-		<< subcaches.size() << " subcache"
-		<< (subcaches.size() != 1 ? "s" : "")
-		<< " into aggregate cache..." << std::endl;
-      res = vkMergePipelineCaches(device,
-				  compute_pipeline_cache,
-				  static_cast<uint32_t>(subcaches.size()),
-				  subcaches.data());
-      if (res == VK_SUCCESS) {
-	std::cout << "Subcache"
-		  << (COMPUTE_PIPELINE_COUNT != 1 ? "s" : "")
-		  << " merged successfully!"
-		  << std::endl;
-	std::cout << "Destroying subcache"
-		  << (COMPUTE_PIPELINE_COUNT != 1 ? "s..." : "...")
-		  << std::endl;
-	for (unsigned int i = 0; i != COMPUTE_PIPELINE_COUNT; i++)
-	  vkDestroyPipelineCache(device,
-				 subcaches[i],
-				 CUSTOM_ALLOCATOR ? &alloc_callbacks : nullptr);
-      }
-      else
-	std::cout << "Failed to merge compute pipeline subcaches..."
-		  << std::endl;
-    }
-    else
-      std::cout << "Failed to create compute pipeline cache..."
-		<< std::endl;
-  } else
-    std::cout << "Failed to create compute pipeline cache: "
-	      << "Failed to create compute pipeline subcache"
-	      << (COMPUTE_PIPELINE_COUNT != 1 ? "s..." : "")
-	      << std::endl;
-}
-
-void create_compute_pipeline_layout()
-{
-  VkPipelineLayoutCreateInfo create_info = {};
-  create_info.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-  create_info.pNext = nullptr;
-  create_info.flags = 0;
-  create_info.setLayoutCount = 1;
-  create_info.pSetLayouts = &descriptor_set_layouts[DESCRIPTOR_SET_COMPUTE];
-
-  VkPushConstantRange range;
-  range.stageFlags = VK_SHADER_STAGE_ALL;
-  range.offset = 0;
-  range.size = sizeof(push_constants);
-
-  create_info.pushConstantRangeCount = 1;
-  create_info.pPushConstantRanges = &range;
-
-  std::cout << "Creating compute pipeline layout..."
-	    << std::endl;
-  res = vkCreatePipelineLayout(device,
-			       &create_info,
-			       CUSTOM_ALLOCATOR ? &alloc_callbacks : nullptr,
-			       &compute_pipeline_layout);
-  if (res == VK_SUCCESS)
-    std::cout << "Compute pipeline layout created successfully!"
-	      << std::endl;
-  else
-    std::cout << "Failed to create compute pipeline layout..."
-	      << std::endl;
-}
-
-void create_compute_pipelines()
-{
-  compute_pipelines.resize(COMPUTE_PIPELINE_COUNT);
-    
-  std::vector<VkComputePipelineCreateInfo> create_infos(COMPUTE_PIPELINE_COUNT);
-  for (unsigned int i = 0; i != COMPUTE_PIPELINE_COUNT; i++) {
-    VkPipelineShaderStageCreateInfo stage_info = {};
-    stage_info.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-    stage_info.pNext = nullptr;
-    stage_info.flags = 0;
-    stage_info.stage = VK_SHADER_STAGE_COMPUTE_BIT;
-    stage_info.module = compute_shader;
-    stage_info.pName = "main";
-    stage_info.pSpecializationInfo = nullptr;
-
-    create_infos[i].sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
-    create_infos[i].pNext = nullptr;
-    create_infos[i].flags = 0;
-    create_infos[i].stage = stage_info;
-    create_infos[i].layout = compute_pipeline_layout;
-    create_infos[i].basePipelineHandle = VK_NULL_HANDLE;
-    create_infos[i].basePipelineIndex = -1;
-  }
-
-  std::cout << "Creating "
-	    << COMPUTE_PIPELINE_COUNT << " compute pipeline"
-	    << (COMPUTE_PIPELINE_COUNT != 1 ? "s..." : "...") << std::endl;
-  res = vkCreateComputePipelines(device,
-				 compute_pipeline_cache,
-				 COMPUTE_PIPELINE_COUNT,
-				 create_infos.data(),
-				 CUSTOM_ALLOCATOR ? &alloc_callbacks : nullptr,
-				 compute_pipelines.data());
-  if (res == VK_SUCCESS)
-    std::cout << "Created "
-	      << COMPUTE_PIPELINE_COUNT << " compute pipeline"
-	      << (COMPUTE_PIPELINE_COUNT != 1 ? "s" : "")
-	      << " successfully!" << std::endl;
-  else
-    std::cout << "Failed to create compute pipeline"
-	      << (COMPUTE_PIPELINE_COUNT != 1 ? "s..." : "...")
-	      << std::endl;
-}
-
 void create_descriptor_pool()
 {
   VkDescriptorPoolCreateInfo create_info = {};
@@ -1840,12 +1627,8 @@ void create_descriptor_pool()
   create_info.maxSets = static_cast<uint32_t>(DESCRIPTOR_SET_COUNT);
   std::vector<VkDescriptorPoolSize> pool_sizes(DESCRIPTOR_SET_COUNT);
   for (unsigned int i = 0; i != DESCRIPTOR_SET_COUNT; i++) {
-    pool_sizes[i].type =
-      i == DESCRIPTOR_SET_COMPUTE ?
-      VK_DESCRIPTOR_TYPE_STORAGE_BUFFER :
-      VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-    pool_sizes[i].descriptorCount =
-      i == DESCRIPTOR_SET_COMPUTE ? BUFFER_COUNT : 1;
+    pool_sizes[i].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+    pool_sizes[i].descriptorCount = 1;
   }
   create_info.poolSizeCount = static_cast<uint32_t>(pool_sizes.size());
   create_info.pPoolSizes = pool_sizes.data();
@@ -1929,13 +1712,6 @@ void update_descriptor_sets()
     locks[i].lock();
   }
   
-  std::vector<VkDescriptorBufferInfo> buffer_info(BUFFER_COUNT);
-  for (unsigned int j = 0; j != BUFFER_COUNT; j++) {
-    buffer_info[j].buffer = buffers[j];
-    buffer_info[j].offset = 0;
-    buffer_info[j].range = VK_WHOLE_SIZE;
-  }
-
   VkDescriptorBufferInfo uniform_buffer_info = {};
   uniform_buffer_info.buffer = buffers[UNIFORM_BUFFER];
   uniform_buffer_info.offset = 0;
@@ -1948,15 +1724,10 @@ void update_descriptor_sets()
     writes[i].dstSet = descriptor_sets[i];
     writes[i].dstBinding = i;
     writes[i].dstArrayElement = 0;
-    writes[i].descriptorCount =
-      i == DESCRIPTOR_SET_COMPUTE ? BUFFER_COUNT : 1;
-    writes[i].descriptorType =
-      i == DESCRIPTOR_SET_COMPUTE ?
-      VK_DESCRIPTOR_TYPE_STORAGE_BUFFER :
-      VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+    writes[i].descriptorCount = 1;
+    writes[i].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
     writes[i].pImageInfo = nullptr;
-    writes[i].pBufferInfo =
-      i == DESCRIPTOR_SET_COMPUTE ? buffer_info.data() : &uniform_buffer_info;
+    writes[i].pBufferInfo = &uniform_buffer_info;
     writes[i].pTexelBufferView = nullptr;
   }
 
@@ -1973,19 +1744,6 @@ void update_descriptor_sets()
     locks[i].unlock();
 }
 
-void record_bind_compute_pipeline(uint32_t pipeline_idx,
-				  uint32_t command_buf_idx)
-{
-  std::lock_guard<std::mutex> buf_lock(command_buffer_mutex[command_buf_idx]);
-  std::lock_guard<std::mutex> pool_lock(command_pool_mutex);
-  std::cout << "Recording bind compute pipeline " << pipeline_idx
-	    << " to command buffer " << command_buf_idx
-	    << "..." << std::endl;
-  vkCmdBindPipeline(command_buffers[command_buf_idx],
-		    VK_PIPELINE_BIND_POINT_COMPUTE,
-		    compute_pipelines[pipeline_idx]);
-}
-
 void record_bind_descriptor_set(uint32_t descriptor_set_idx,
 				uint32_t command_buf_idx)
 {
@@ -1995,78 +1753,13 @@ void record_bind_descriptor_set(uint32_t descriptor_set_idx,
 	    << " to command buffer " << command_buf_idx << "..."
 	    << std::endl;
   vkCmdBindDescriptorSets(command_buffers[command_buf_idx],
-			  descriptor_set_idx == DESCRIPTOR_SET_COMPUTE ?
-			  VK_PIPELINE_BIND_POINT_COMPUTE :
 			  VK_PIPELINE_BIND_POINT_GRAPHICS,
-			  descriptor_set_idx == DESCRIPTOR_SET_COMPUTE ?
-			  compute_pipeline_layout : graphics_pipeline_layout,
+			  graphics_pipeline_layout,
 			  0,
 			  1,
 			  &descriptor_sets[descriptor_set_idx],
 			  0,
 			  nullptr);
-}
-
-void record_push_constants(uint32_t command_buf_idx)
-{
-  std::lock_guard<std::mutex> buf_lock(command_buffer_mutex[command_buf_idx]);
-  std::lock_guard<std::mutex> pool_lock(command_pool_mutex);
-  std::cout << "Recording push constants to command buffer "
-	    << command_buf_idx << "..." << std::endl;
-  vkCmdPushConstants(command_buffers[command_buf_idx],
-		     compute_pipeline_layout,
-		     VK_SHADER_STAGE_ALL,
-		     0,
-		     sizeof(push_constants),
-		     push_constants);
-}
-
-void record_dispatch_compute_pipeline(uint32_t command_buf_idx)
-{
-  std::lock_guard<std::mutex> buf_lock(command_buffer_mutex[command_buf_idx]);
-  std::lock_guard<std::mutex> pool_lock(command_pool_mutex);
-  std::cout << "Recording dispatch compute pipeline to command buffer "
-	    << command_buf_idx << "..." << std::endl;
-  vkCmdDispatch(command_buffers[command_buf_idx],
-		4,
-		5,
-		6);
-}
-
-void fetch_compute_pipeline_cache_data()
-{
-  std::cout << "Fetching size of compute pipeline cache..."
-	    << std::endl;
-  size_t cache_size;
-  res = vkGetPipelineCacheData(device,
-			       compute_pipeline_cache,
-			       &cache_size,
-			       nullptr);
-  if (res == VK_SUCCESS) {
-    std::cout << "Fetching data for compute pipeline cache..."
-	      << std::endl;
-    compute_pipeline_cache_data = malloc(cache_size);
-    res = vkGetPipelineCacheData(device,
-				 compute_pipeline_cache,
-				 &cache_size,
-				 compute_pipeline_cache_data);
-    if (res == VK_SUCCESS)
-      std::cout << "Successfully fetched compute pipeline cache data!"
-		<< std::endl;
-    else
-      std::cout << "Failed to fetch compute pipeline cache data..."
-		<< std::endl;
-  } else
-    std::cout << "Failed to get size of compute pipeline cache..."
-	      << std::endl;
-}
-
-void delete_compute_pipeline_cache_data()
-{
-  std::lock_guard<std::mutex> lock(compute_pipeline_cache_data_mutex);
-  std::cout << "Freeing fetched data for compute pipeline cache..."
-	    << std::endl;
-  free(compute_pipeline_cache_data);
 }
 
 void create_renderpass()
@@ -2828,23 +2521,6 @@ void destroy_descriptor_pool()
 			  CUSTOM_ALLOCATOR ? &alloc_callbacks : nullptr);
 }
 
-void destroy_compute_pipelines()
-{
-  std::vector<std::unique_lock<std::mutex>> locks;
-  for (auto& mut : compute_pipeline_mutex)
-    locks.emplace_back(mut, std::defer_lock);
-  
-  for (unsigned int i = 0; i != COMPUTE_PIPELINE_COUNT; i++) {
-    std::cout << "Destroying compute pipeline " << (i+1) << "/"
-	      << COMPUTE_PIPELINE_COUNT << "..." << std::endl;
-    locks[i].lock();
-    vkDestroyPipeline(device,
-		      compute_pipelines[i],
-		      CUSTOM_ALLOCATOR ? &alloc_callbacks : nullptr);
-    locks[i].unlock();
-  }
-}
-
 void destroy_graphics_pipelines()
 {
   std::vector<std::unique_lock<std::mutex>> locks;
@@ -2871,26 +2547,6 @@ void destroy_graphics_pipeline_layout()
 			  CUSTOM_ALLOCATOR ? &alloc_callbacks : nullptr);
 }
 
-
-void destroy_compute_pipeline_layout()
-{
-  std::lock_guard<std::mutex> lock(compute_pipeline_layout_mutex);
-  std::cout << "Destroying compute pipeline layout..." << std::endl;
-  vkDestroyPipelineLayout(device,
-			  compute_pipeline_layout,
-			  CUSTOM_ALLOCATOR ? &alloc_callbacks : nullptr);
-}
-
-void destroy_compute_pipeline_cache()
-{
-  std::lock_guard<std::mutex> lock(compute_pipeline_cache_mutex);
-  std::cout << "Destroying compute pipeline cache..."
-	    << std::endl;
-  vkDestroyPipelineCache(device,
-			 compute_pipeline_cache,
-			 CUSTOM_ALLOCATOR ? &alloc_callbacks : nullptr);
-}
-
 void destroy_descriptor_set_layouts()
 {
   std::vector<std::unique_lock<std::mutex>> locks;
@@ -2906,15 +2562,6 @@ void destroy_descriptor_set_layouts()
 				 CUSTOM_ALLOCATOR ? &alloc_callbacks : nullptr);
     locks[i].unlock();
   }
-}
-
-void destroy_compute_shader()
-{
-  std::cout << "Destroying compute shader module..." << std::endl;
-  std::lock_guard<std::mutex> lock(compute_shader_mutex);
-  vkDestroyShaderModule(device,
-			compute_shader,
-			CUSTOM_ALLOCATOR ? &alloc_callbacks : nullptr);
 }
 
 void destroy_fragment_shader()
@@ -3397,13 +3044,7 @@ int main(int argc, const char* argv[])
 
   create_semaphore();
 
-  create_compute_shader("shaders/simple.comp.spv");
-
   create_descriptor_set_layouts();
-
-  create_compute_pipeline_cache();
-  create_compute_pipeline_layout();
-  create_compute_pipelines();
 
   create_descriptor_pool();
 
@@ -3420,31 +3061,6 @@ int main(int argc, const char* argv[])
 		    READ_OFFSET,
 		    READ_LENGTH,
 		    buf_mem_requirements);
-
-  uint32_t compute_pipeline_idx = 0;
-  begin_recording(COMMAND_BUFFER_COMPUTE);
-  record_bind_compute_pipeline(compute_pipeline_idx,
-			       COMMAND_BUFFER_COMPUTE);
-  record_bind_descriptor_set(DESCRIPTOR_SET_COMPUTE,
-			     COMMAND_BUFFER_COMPUTE);
-  record_push_constants(COMMAND_BUFFER_COMPUTE);
-  record_dispatch_compute_pipeline(COMMAND_BUFFER_COMPUTE);
-  end_recording(COMMAND_BUFFER_COMPUTE);
-
-  submit_to_queue(COMMAND_BUFFER_COMPUTE, submit_queue_idx);
-  wait_for_queue(submit_queue_idx);
-  reset_command_buffer(COMMAND_BUFFER_COMPUTE);
-
-  std::cout << "After submit:" << std::endl;
-  print_all_buffers(device,
-		    memory[RESOURCE_BUFFER],
-		    memory_mutex[RESOURCE_BUFFER],
-		    READ_OFFSET,
-		    READ_LENGTH,
-		    buf_mem_requirements);
-
-  fetch_compute_pipeline_cache_data();
-  delete_compute_pipeline_cache_data();
 
   create_vertex_shader("shaders/simple.vert.spv");
   create_fragment_shader("shaders/simple.frag.spv");
@@ -3595,13 +3211,7 @@ int main(int argc, const char* argv[])
 
   destroy_descriptor_pool();
 
-  destroy_compute_pipelines();
-  destroy_compute_pipeline_layout();
-  destroy_compute_pipeline_cache();
-
   destroy_descriptor_set_layouts();
-
-  destroy_compute_shader();
 
   destroy_semaphore();
   
