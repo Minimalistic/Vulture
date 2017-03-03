@@ -59,10 +59,14 @@ add_definitions(-DINSTANCE_COUNT=${NUM_INSTANCES})
 set(CPP_SOURCE_DIR "src/main")
 
 set (GLM_VERSION 0.9.8.4)
+set (TINYOBJLOADER_VERSION 1.0.5)
 
 include_directories(include)
 include_directories("$ENV{VULKAN_SDK}/include")
 include_directories(lib/glm-${GLM_VERSION})
+include_directories(lib/tinyobjloader-${TINYOBJLOADER_VERSION})
+
+add_subdirectory(lib/tinyobjloader-${TINYOBJLOADER_VERSION})
 
 add_library(Utility ${CPP_SOURCE_DIR}/util.cpp)
 add_library(Allocator ${CPP_SOURCE_DIR}/allocator.cpp)
