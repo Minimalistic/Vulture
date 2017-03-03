@@ -86,6 +86,8 @@ FOREACH(TARGET ${EXECUTABLES})
       add_executable(${TARGET} ${CPP_SOURCE_DIR}/${TARGET}.cpp)
     ENDIF(NOT ${TARGET} STREQUAL compute)
   ELSE(WIN32)
+    add_executable(${TARGET} ${CPP_SOURCE_DIR}/${TARGET}.cpp)
+    
     # Link Xlib
     find_package(X11 REQUIRED)
     target_link_libraries(${TARGET} ${X11_LIBRARIES})
@@ -94,8 +96,6 @@ FOREACH(TARGET ${EXECUTABLES})
     # Link XCB
     find_package(XCB REQUIRED)
     target_link_libraries(${TARGET} ${XCB_LIBRARIES})
-
-    add_executable(${TARGET} ${CPP_SOURCE_DIR}/${TARGET}.cpp)
   ENDIF(WIN32)
 
   # Link threading libraries
