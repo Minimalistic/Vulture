@@ -27,8 +27,9 @@
 
 ###Linux
 
-`VULKAN_SDK=<path_to_lunarg_vulkan_sdk>/x86_64
-VK_LAYER_PATH=$VULKAN_SDK/etc/explicit_layer.d`
+`VULKAN_SDK=<path_to_lunarg_vulkan_sdk>/x86_64`
+
+`VK_LAYER_PATH=$VULKAN_SDK/etc/explicit_layer.d`
 
 ###Windows
 
@@ -36,10 +37,17 @@ VK_LAYER_PATH=$VULKAN_SDK/etc/explicit_layer.d`
 
 Update registry to point to Vulkan SDK layer manifests (the Windows installer
   should take care of this for you)
-  
+
 
 ##Building and Running
 
+There are 2 demos you can run: 
+
+**compute** will create the compute pipeline and execute the sample compute shader. You can check the logs
+for output (you should see a ton of 'LMAO's and 'XDXD's).
+
+**graphics** is the more interesting of the 2. It will trigger the graphics pipeline that will 
+render graphics to your screen.
 
 ###Linux
 
@@ -48,7 +56,7 @@ Update registry to point to Vulkan SDK layer manifests (the Windows installer
 2. cmake -H. -Bbuild
 3. cd build
 4. make
-5. ./Vulture
+5. ./\<demo>
 
 ###Windows (using Visual Studio 2015)
 
@@ -57,7 +65,7 @@ Update registry to point to Vulkan SDK layer manifests (the Windows installer
 2. cmake -H. -Bbuild -G"Visual Studio 14 2015 Win64"
 3. cd build
 4. msbuild Vulture.sln
-5. Debug\Vulture.exe
+5. Debug\\\<demo>.exe
 
 
 ##Vulkan coding tips
