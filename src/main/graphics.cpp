@@ -9,6 +9,8 @@
 #include <cassert>
 #include <cmath>
 
+#define FULLSCREEN false
+
 #define USE_XCB false
 
 #if defined(WIN32) || defined(_WIN32) || defined(__WIN32) && !defined(__CYGWIN__)
@@ -86,7 +88,7 @@ Window window;
 #define HOST_COHERENT(X) ((X & VK_MEMORY_PROPERTY_HOST_COHERENT_BIT) != 0)
 #define HOST_VISIBLE(X)  ((X & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) != 0)
 
-#define PREFERRED_WIDTH 800
+#define PREFERRED_WIDTH  800
 #define PREFERRED_HEIGHT 600
 
 #define BUFFER_FORMAT        VK_FORMAT_R8G8B8A8_UNORM
@@ -145,6 +147,9 @@ uint32_t queue_family_queue_count;
 uint32_t mem_types[2] = {UINT32_MAX, UINT32_MAX};
 uint32_t cur_swapchain_img;
 uint32_t push_constants[2] = {make_data("LMAO"), make_data("XDXD")};
+
+unsigned int display_width;
+unsigned int display_height;
 
 VkResult res;
 VkInstance inst;
@@ -267,8 +272,12 @@ void create_window()
     szWindowClass,  
     szTitle,  
     WS_OVERLAPPEDWINDOW,  
-    CW_USEDEFAULT, CW_USEDEFAULT,  
+    CW_USEDEFAULT, CW_USEDEFAULT,
+#if FULLSCFREEN
+    display_width, display_height,
+#else
     PREFERRED_WIDTH, PREFERRED_HEIGHT,
+#endif
     NULL,  
     NULL,  
     hInst,  
@@ -286,13 +295,30 @@ void create_window()
   xcb_screen_iterator_t iter  = xcb_setup_roots_iterator(setup);
   screen = iter.data;
 
+  xcb_window_t root_window = { 0 };
+  if (screen) {
+    root_window = screen->root;
+    xcb_get_geometry_cookie_t geom_cookie = xcb_get_geometry(connection,
+							     root_window);
+    xcb_get_geometry_reply_t* geom = xcb_get_geometry_reply(connection,
+							    geom_cookie,
+							    NULL);
+    display_width = geom->width;
+    display_height = geom->height;
+    free(geom);
+  }
+
   window = xcb_generate_id(connection);
   xcb_create_window(connection,
 		    XCB_COPY_FROM_PARENT,
 		    window,
 		    screen->root,
 		    0, 0,
+#if FULLSCREEN
+		    display_width, display_height,
+#else
 		    PREFERRED_WIDTH, PREFERRED_HEIGHT,
+#endif
 		    10,
 		    XCB_WINDOW_CLASS_INPUT_OUTPUT,
 		    screen->root_visual,
@@ -301,11 +327,19 @@ void create_window()
   xcb_flush(connection);
 #else
   display = XOpenDisplay(NULL);
-  int screen = DefaultScreen(display);  
+  int screen = DefaultScreen(display);
+
+  display_width = XDisplayWidth(display, screen);
+  display_height = XDisplayHeight(display, screen);
+  
   window = XCreateSimpleWindow(display,
 			       RootWindow(display, screen),
-			       10, 10,
+			       0, 0,
+#if FULLSCREEN
+			       display_width, display_height,
+#else
 			       PREFERRED_WIDTH, PREFERRED_HEIGHT,
+#endif
 			       1,
 			       BlackPixel(display, screen),
 			       WhitePixel(display, screen));
@@ -599,8 +633,8 @@ void create_images()
     img_create_infos[i].format =
       i == DEPTH_STENCIL_IMAGE ? DEPTH_STENCIL_FORMAT : IMAGE_FORMAT;
     VkExtent3D dimensions = {};
-    dimensions.width = PREFERRED_WIDTH;
-    dimensions.height = PREFERRED_HEIGHT;
+    dimensions.width = FULLSCREEN ? display_width : PREFERRED_WIDTH;
+    dimensions.height = FULLSCREEN ? display_height : PREFERRED_HEIGHT;
     dimensions.depth = 1;
     img_create_infos[i].extent = dimensions;
     img_create_infos[i].mipLevels = 1;
