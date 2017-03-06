@@ -266,6 +266,9 @@ void create_window()
 	      << std::endl;
     return;
   }
+
+  display_width = GetSystemMetrics(SM_CXSCREEN);
+  display_height = GetSystemMetrics(SM_CYSCREEN);
     
   hWnd = CreateWindowEx(
     0,
