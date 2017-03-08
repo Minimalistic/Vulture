@@ -73,9 +73,6 @@ Window window;
 #define INDEX_BUFFER                    1
 #define UNIFORM_BUFFER                  2
 
-#define VERTEX_COUNT                    3
-#define INDEX_COUNT                     3
-
 #define DESCRIPTOR_SET_COUNT            1
 
 #define DESCRIPTOR_SET_GRAPHICS         0
@@ -108,6 +105,8 @@ Window window;
 #define MAX_SWAPCHAIN_IMAGES        8
 
 #define NEXT_IMAGE_TIMEOUT          1000 // nanoseconds
+
+
 
 std::string platform;
 
@@ -193,6 +192,10 @@ std::vector<VkFramebuffer> framebuffers;
 const std::string logfile = "graphics.log";
 const std::string errfile = "graphics.err";
 
+tinyobj::attrib_t attrib;
+std::vector<tinyobj::shape_t> shapes;
+std::vector<tinyobj::material_t> materials;
+
 typedef struct vertex_t {
   float position[4];
   float color[4];
@@ -200,7 +203,8 @@ typedef struct vertex_t {
   float texcoord[2];
 } vertex;
 
-vertex vertices[VERTEX_COUNT];
+std::vector<vertex> vertices;
+std::vector<uint32_t> indices;
 
 struct {
   glm::mat4 projection_matrix;
@@ -2326,26 +2330,7 @@ void record_clear_color_image(uint32_t img_idx, uint32_t command_buf_idx)
 }
 
 void update_vertex_buffer()
-{
-  vertices[0] = {
-    {-0.7f, 0.7f, 0.0f, 1.0f}, // position
-    {1.0f, 0.0f, 0.0f, 1.0f},  // color
-    {0.0f, 0.0f, 0.0f},        // normal
-    {0.0f, 0.0f}               // texcoord
-  };
-  vertices[1] = {
-    {0.7f, 0.7f, 0.0f, 1.0f},
-    {0.0f, 1.0f, 0.0f, 1.0f},
-    {0.0f, 0.0f, 0.0f},
-    {0.0f, 0.0f}
-  };
-  vertices[2] = {
-    {0.0f, -0.7f, 0.0f, 1.0f},
-    {0.0f, 0.0f, 1.0f, 1.0f},
-    {0.0f, 0.0f, 0.0f},
-    {0.0f, 0.0f}
-  };
-  
+{  
   void* buf_data;
   std::lock_guard<std::mutex> lock(memory_mutex[RESOURCE_BUFFER]);
   res = vkMapMemory(device,
@@ -2359,7 +2344,7 @@ void update_vertex_buffer()
   else
     std::cout << "Failed to update vertex buffer..." << std::endl;
 
-  memcpy(buf_data, vertices, sizeof(vertex)*VERTEX_COUNT);
+  memcpy(buf_data, vertices.data(), sizeof(vertex)*vertices.size());
 
   vkUnmapMemory(device,
 		memory[RESOURCE_BUFFER]);
@@ -2367,8 +2352,6 @@ void update_vertex_buffer()
 
 void update_index_buffer()
 {
-  uint32_t indices[INDEX_COUNT] = {0, 1, 2};
-  
   void* buf_data;
   std::lock_guard<std::mutex> lock(memory_mutex[RESOURCE_BUFFER]);
   res = vkMapMemory(device,
@@ -2382,7 +2365,7 @@ void update_index_buffer()
   else
     std::cout << "Failed to update index buffer..." << std::endl;
 
-  memcpy(buf_data, indices, sizeof(uint32_t)*INDEX_COUNT);
+  memcpy(buf_data, indices.data(), sizeof(uint32_t)*indices.size());
 
   vkUnmapMemory(device,
 		memory[RESOURCE_BUFFER]);
@@ -2483,11 +2466,20 @@ void record_begin_renderpass(uint32_t command_buf_idx)
 		       VK_SUBPASS_CONTENTS_INLINE);  
 }
 
+void record_draw(uint32_t command_buf_idx, uint32_t num_instances)
+{
+  std::cout << "Recording draw vertices..." << std::endl;
+  vkCmdDraw(command_buffers[command_buf_idx],
+	    static_cast<uint32_t>(vertices.size()),
+	    num_instances,
+	    0, 0);
+}
+
 void record_draw_indexed(uint32_t command_buf_idx, uint32_t num_instances)
 {
   std::cout << "Recording draw indexed vertices..." << std::endl;
   vkCmdDrawIndexed(command_buffers[command_buf_idx],
-  		   INDEX_COUNT,
+  		   static_cast<uint32_t>(indices.size()),
    		   num_instances,
    		   0,
    		   0,
@@ -2498,6 +2490,106 @@ void record_end_renderpass(uint32_t command_buf_idx)
 {
   std::cout << "Recording end renderpass..." << std::endl;
   vkCmdEndRenderPass(command_buffers[command_buf_idx]);
+}
+
+void load_triangle()
+{
+  std::cout << "Loading triangle data..."
+	    << std::endl;
+  
+  vertices.resize(3);
+  indices.resize(3);
+  
+  vertices[0] = {
+    {-0.7f, 0.7f, 0.0f, 1.0f}, // position
+    {1.0f, 0.0f, 0.0f, 1.0f},  // color
+    {0.0f, 0.0f, 0.0f},        // normal
+    {0.0f, 0.0f}               // texcoord
+  };
+  vertices[1] = {
+    {0.7f, 0.7f, 0.0f, 1.0f},
+    {0.0f, 1.0f, 0.0f, 1.0f},
+    {0.0f, 0.0f, 0.0f},
+    {0.0f, 0.0f}
+  };
+  vertices[2] = {
+    {0.0f, -0.7f, 0.0f, 1.0f},
+    {0.0f, 0.0f, 1.0f, 1.0f},
+    {0.0f, 0.0f, 0.0f},
+    {0.0f, 0.0f}
+  };
+
+  indices[0] = 0;
+  indices[1] = 1;
+  indices[2] = 2;
+}
+
+void load_object_file(const std::string& input_file)
+{
+  std::cout << "Loading object file: " << input_file << "..." << std::endl;
+  std::string file_path = "../src/object/" + input_file;
+  std::string err;
+  bool ret = tinyobj::LoadObj(&attrib,
+			      &shapes,
+			      &materials,
+			      &err,
+			      file_path.c_str());
+
+  if (!err.empty())
+    std::cerr << "tinyobjloader: " << err << std::endl;
+
+  if (!ret) {
+    std::cout << "Failed to load object file..." << std::endl;
+    return;
+  } else
+    std::cout << "Object file loaded successfully!" << std::endl;
+
+  vertices.clear();
+  indices.clear();
+  
+  for (size_t s = 0; s < shapes.size(); s++) {
+    size_t index_offset = 0;
+    for (size_t f = 0; f < shapes[s].mesh.num_face_vertices.size(); f++) {
+      int fv = shapes[s].mesh.num_face_vertices[f];
+
+      for (size_t v = 0; v < fv; v++) {
+	vertex vert;
+	
+	tinyobj::index_t idx = shapes[s].mesh.indices[index_offset + v];
+
+	float vx = attrib.vertices[3*idx.vertex_index+0];
+	float vy = attrib.vertices[3*idx.vertex_index+1];
+	float vz = attrib.vertices[3*idx.vertex_index+2];
+	float nx = attrib.normals[3*idx.normal_index+0];
+	float ny = attrib.normals[3*idx.normal_index+1];
+	float nz = attrib.normals[3*idx.normal_index+2];
+	// float tx = attrib.texcoords[2*idx.texcoord_index+0];
+	// float ty = attrib.texcoords[2*idx.texcoord_index+1];
+
+	vert.position[0] = vx;
+	vert.position[1] = vy;
+	vert.position[2] = vz;
+	vert.position[3] = 1.0f;
+
+	vert.color[0] = 0.0f;
+	vert.color[1] = 0.0f;
+	vert.color[2] = 1.0f;
+	vert.color[3] = 1.0f;
+
+	vert.normal[0] = nx;
+	vert.normal[1] = ny;
+	vert.normal[2] = nz;
+
+	vert.texcoord[0] = 0.0f;
+	vert.texcoord[1] = 0.0f;
+
+	vertices.push_back(vert);
+	indices.push_back(static_cast<uint32_t>(idx.vertex_index));
+      }
+
+      index_offset += fv;
+    }
+  }
 }
 
 void destroy_framebuffers()
@@ -3111,7 +3203,8 @@ int main(int argc, const char* argv[])
   create_framebuffers();
   create_graphics_pipeline_layout();
   create_graphics_pipelines();
-  
+
+  load_triangle();
   update_vertex_buffer();
   update_index_buffer();
   update_uniform_buffer();
@@ -3230,6 +3323,40 @@ int main(int argc, const char* argv[])
     record_bind_vertex_buffer(COMMAND_BUFFER_GRAPHICS);
     record_bind_index_buffer(COMMAND_BUFFER_GRAPHICS);
     record_draw_indexed(COMMAND_BUFFER_GRAPHICS, 2);
+    record_end_renderpass(COMMAND_BUFFER_GRAPHICS);
+    record_swapchain_image_barrier(COMMAND_BUFFER_GRAPHICS,
+				   VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+				   VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+				   VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
+				   VK_ACCESS_MEMORY_READ_BIT);
+    end_recording(COMMAND_BUFFER_GRAPHICS);
+    submit_to_queue(COMMAND_BUFFER_GRAPHICS, submit_queue_idx);
+    wait_for_queue(submit_queue_idx);
+    present_current_swapchain_image(submit_queue_idx);
+    reset_command_buffer(COMMAND_BUFFER_GRAPHICS);
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
+
+  load_object_file("cube.obj");
+  update_vertex_buffer();
+
+  rotation[0] = glm::vec3();
+  translation[0] = glm::vec3();
+
+  for (unsigned int i = 0; i != 1000; i++) {
+    rotation[0].y += 0.25f;
+    update_uniform_buffer();
+    
+    next_swapchain_image();
+    begin_recording(COMMAND_BUFFER_GRAPHICS);
+    record_begin_renderpass(COMMAND_BUFFER_GRAPHICS);
+    record_bind_graphics_pipeline(graphics_pipeline_idx,
+				  COMMAND_BUFFER_GRAPHICS);
+    record_bind_descriptor_set(DESCRIPTOR_SET_GRAPHICS,
+			       COMMAND_BUFFER_GRAPHICS);
+    record_bind_vertex_buffer(COMMAND_BUFFER_GRAPHICS);
+    record_draw(COMMAND_BUFFER_GRAPHICS, 1);
     record_end_renderpass(COMMAND_BUFFER_GRAPHICS);
     record_swapchain_image_barrier(COMMAND_BUFFER_GRAPHICS,
 				   VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
