@@ -106,8 +106,6 @@ Window window;
 
 #define NEXT_IMAGE_TIMEOUT          1000 // nanoseconds
 
-
-
 std::string platform;
 
 std::mutex device_mutex;
@@ -600,7 +598,7 @@ void create_buffers()
     buf_create_infos[i].sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
     buf_create_infos[i].pNext = nullptr;
     buf_create_infos[i].flags = 0;
-    buf_create_infos[i].size = 2048;
+    buf_create_infos[i].size = 4096;
     buf_create_infos[i].usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT
       | VK_BUFFER_USAGE_TRANSFER_DST_BIT
       | VK_BUFFER_USAGE_UNIFORM_TEXEL_BUFFER_BIT
@@ -2545,7 +2543,6 @@ void load_object_file(const std::string& input_file)
     std::cout << "Object file loaded successfully!" << std::endl;
 
   vertices.clear();
-  indices.clear();
   
   for (size_t s = 0; s < shapes.size(); s++) {
     size_t index_offset = 0;
@@ -2557,34 +2554,51 @@ void load_object_file(const std::string& input_file)
 	
 	tinyobj::index_t idx = shapes[s].mesh.indices[index_offset + v];
 
-	float vx = attrib.vertices[3*idx.vertex_index+0];
-	float vy = attrib.vertices[3*idx.vertex_index+1];
-	float vz = attrib.vertices[3*idx.vertex_index+2];
-	float nx = attrib.normals[3*idx.normal_index+0];
-	float ny = attrib.normals[3*idx.normal_index+1];
-	float nz = attrib.normals[3*idx.normal_index+2];
-	// float tx = attrib.texcoords[2*idx.texcoord_index+0];
-	// float ty = attrib.texcoords[2*idx.texcoord_index+1];
+	unsigned int vertex_offset = 3 * idx.vertex_index;
+	unsigned int normal_offset = 3 * idx.normal_index;
+	unsigned int texcoord_offset = 2 * idx.texcoord_index;
+
+	float vx = attrib.vertices[vertex_offset+0];
+	float vy = attrib.vertices[vertex_offset+1];
+	float vz = attrib.vertices[vertex_offset+2];
+
+	float nx = attrib.normals.empty() ||
+	  normal_offset+0 >= attrib.normals.size() ?
+	  0.0f : attrib.normals[normal_offset+0];
+	float ny = attrib.normals.empty() ||
+	  normal_offset+1 >= attrib.normals.size() ?
+	  0.0f : attrib.normals[normal_offset+1];
+	float nz = attrib.normals.empty() ||
+	  normal_offset+2 >= attrib.normals.size() ?
+	  0.0f : attrib.normals[normal_offset+2];
+	float tx = attrib.texcoords.empty() ||
+	  texcoord_offset+0 >= attrib.texcoords.size() ?
+	  0.0f : attrib.texcoords[texcoord_offset+0];
+	float ty = attrib.texcoords.empty() ||
+	  texcoord_offset+1 >= attrib.texcoords.size() ?
+	  0.0f : attrib.texcoords[texcoord_offset+1];
 
 	vert.position[0] = vx;
 	vert.position[1] = vy;
 	vert.position[2] = vz;
 	vert.position[3] = 1.0f;
 
-	vert.color[0] = 0.0f;
-	vert.color[1] = 0.0f;
-	vert.color[2] = 1.0f;
+	float red = (float) (rand() % 256);
+	float green = (float) (rand() % 256);
+	float blue = (float) (rand() % 256);
+	vert.color[0] = red / 255.0f;
+	vert.color[1] = green / 255.0f;
+	vert.color[2] = blue / 255.0f;
 	vert.color[3] = 1.0f;
 
 	vert.normal[0] = nx;
 	vert.normal[1] = ny;
 	vert.normal[2] = nz;
 
-	vert.texcoord[0] = 0.0f;
-	vert.texcoord[1] = 0.0f;
+	vert.texcoord[0] = tx;
+	vert.texcoord[1] = ty;
 
 	vertices.push_back(vert);
-	indices.push_back(static_cast<uint32_t>(idx.vertex_index));
       }
 
       index_offset += fv;
@@ -3348,6 +3362,40 @@ int main(int argc, const char* argv[])
     rotation[0].y += 0.25f;
     update_uniform_buffer();
     
+    next_swapchain_image();
+    begin_recording(COMMAND_BUFFER_GRAPHICS);
+    record_begin_renderpass(COMMAND_BUFFER_GRAPHICS);
+    record_bind_graphics_pipeline(graphics_pipeline_idx,
+				  COMMAND_BUFFER_GRAPHICS);
+    record_bind_descriptor_set(DESCRIPTOR_SET_GRAPHICS,
+			       COMMAND_BUFFER_GRAPHICS);
+    record_bind_vertex_buffer(COMMAND_BUFFER_GRAPHICS);
+    record_draw(COMMAND_BUFFER_GRAPHICS, 1);
+    record_end_renderpass(COMMAND_BUFFER_GRAPHICS);
+    record_swapchain_image_barrier(COMMAND_BUFFER_GRAPHICS,
+				   VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+				   VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+				   VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
+				   VK_ACCESS_MEMORY_READ_BIT);
+    end_recording(COMMAND_BUFFER_GRAPHICS);
+    submit_to_queue(COMMAND_BUFFER_GRAPHICS, submit_queue_idx);
+    wait_for_queue(submit_queue_idx);
+    present_current_swapchain_image(submit_queue_idx);
+    reset_command_buffer(COMMAND_BUFFER_GRAPHICS);
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
+
+  load_object_file("icosahedron.obj");
+  update_vertex_buffer();
+
+  rotation[0] = glm::vec3();
+  translation[0] = glm::vec3();
+
+  for (unsigned int i = 0; i != 1000; i++) {
+    rotation[0].y += 0.25f;
+    update_uniform_buffer();
+
     next_swapchain_image();
     begin_recording(COMMAND_BUFFER_GRAPHICS);
     record_begin_renderpass(COMMAND_BUFFER_GRAPHICS);
