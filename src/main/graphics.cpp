@@ -25,12 +25,13 @@ HWND hWnd;
 xcb_connection_t* connection;
 xcb_window_t  window;
 xcb_screen_t* screen;
+xcb_generic_event_t* event;
 #else
 #define VK_USE_PLATFORM_XLIB_KHR
 #include <X11/Xlib.h>
 Display* display;
 Window window;
-
+XEvent event;
 #endif
 
 #include <vulkan/vulkan.h>
@@ -158,7 +159,6 @@ VkDevice device;
 VkDebugReportCallbackEXT debug_report_callback;
 std::vector<VkBuffer> buffers;
 std::vector<VkImage> images;
-std::vector<VkSubresourceLayout> subresource_layouts;
 std::vector<VkMemoryRequirements> buf_mem_requirements;
 std::vector<VkMemoryRequirements> img_mem_requirements;
 VkDeviceSize mem_size[2];
@@ -313,6 +313,8 @@ void create_window()
     free(geom);
   }
 
+  uint32_t value_mask = XCB_CW_EVENT_MASK;
+  uint32_t value_list[1] = {XCB_EVENT_MASK_KEY_PRESS};
   window = xcb_generate_id(connection);
   xcb_create_window(connection,
 		    XCB_COPY_FROM_PARENT,
@@ -327,7 +329,8 @@ void create_window()
 		    10,
 		    XCB_WINDOW_CLASS_INPUT_OUTPUT,
 		    screen->root_visual,
-		    0, NULL);
+		    value_mask,
+		    value_list);
   xcb_map_window(connection, window);
   xcb_flush(connection);
 #else
@@ -348,6 +351,9 @@ void create_window()
 			       1,
 			       BlackPixel(display, screen),
 			       WhitePixel(display, screen));
+  XSelectInput(display,
+	       window,
+	       ButtonPressMask|StructureNotifyMask|KeyPressMask|KeyReleaseMask|KeymapStateMask);
   XMapWindow(display, window);
   XSync(display, false);
 #endif
@@ -679,26 +685,6 @@ void create_images()
     else
       std::cout << "Failed to create image " << i << ": unknown error"
 		<< std::endl;
-  }
-}
-
-void get_subresource_layouts()
-{
-  subresource_layouts.resize(IMAGE_COUNT);
-  
-  for (unsigned int i = 0; i != IMAGE_COUNT; i++) {
-    VkImageSubresource img_subresource = {};
-    img_subresource.aspectMask =
-      i == DEPTH_STENCIL_IMAGE ? VK_IMAGE_ASPECT_DEPTH_BIT : VK_IMAGE_ASPECT_COLOR_BIT;
-    img_subresource.mipLevel = 0;
-    img_subresource.arrayLayer = 0;
-
-    std::cout << "Getting subresource layout for image " << i << "..."
-	      << std::endl;
-    vkGetImageSubresourceLayout(device,
-				images[i],
-				&img_subresource,
-				&subresource_layouts[i]);
   }
 }
 
@@ -3067,16 +3053,6 @@ int main(int argc, const char* argv[])
 
   create_images();
 
-  get_subresource_layouts();
-
-  for (unsigned int i = 0; i != IMAGE_COUNT; i++)
-    std::cout << "Subresource " << i << ": off="
-	      << subresource_layouts[i].offset << ", size="
-	      << subresource_layouts[i].size << ", rowpitch="
-	      << subresource_layouts[i].rowPitch << ", arraypitch="
-	      << subresource_layouts[i].arrayPitch << ", depthpitch="
-	      << subresource_layouts[i].depthPitch << std::endl;
-
   get_buffer_memory_requirements();
   
   get_image_memory_requirements();
@@ -3394,6 +3370,88 @@ int main(int argc, const char* argv[])
 
   for (unsigned int i = 0; i != 1000; i++) {
     rotation[0].y += 0.25f;
+    update_uniform_buffer();
+
+    next_swapchain_image();
+    begin_recording(COMMAND_BUFFER_GRAPHICS);
+    record_begin_renderpass(COMMAND_BUFFER_GRAPHICS);
+    record_bind_graphics_pipeline(graphics_pipeline_idx,
+				  COMMAND_BUFFER_GRAPHICS);
+    record_bind_descriptor_set(DESCRIPTOR_SET_GRAPHICS,
+			       COMMAND_BUFFER_GRAPHICS);
+    record_bind_vertex_buffer(COMMAND_BUFFER_GRAPHICS);
+    record_draw(COMMAND_BUFFER_GRAPHICS, 1);
+    record_end_renderpass(COMMAND_BUFFER_GRAPHICS);
+    record_swapchain_image_barrier(COMMAND_BUFFER_GRAPHICS,
+				   VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+				   VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+				   VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
+				   VK_ACCESS_MEMORY_READ_BIT);
+    end_recording(COMMAND_BUFFER_GRAPHICS);
+    submit_to_queue(COMMAND_BUFFER_GRAPHICS, submit_queue_idx);
+    wait_for_queue(submit_queue_idx);
+    present_current_swapchain_image(submit_queue_idx);
+    reset_command_buffer(COMMAND_BUFFER_GRAPHICS);
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
+
+  load_object_file("octahedron.obj");
+  update_vertex_buffer();
+
+  rotation[0] = glm::vec3();
+  translation[0] = glm::vec3();
+
+  bool run = true;
+  while (run) {
+#ifdef VK_USE_PLATFORM_WIN32_KHR
+#elif USE_XCB
+    event = xcb_poll_for_event(connection);
+    if (event) {
+      switch (event->response_type & ~0x80) {
+      case XCB_KEY_PRESS:
+	xcb_key_press_event_t* press = (xcb_key_press_event_t*) event;
+	switch (press->detail) {
+	case 9:                        // escape
+	  run = false;
+	  break;
+	case 113:                      // left
+	  rotation[0].y -= 0.25f;
+	  break;
+	case 114:                      // right
+	  rotation[0].y += 0.25f;
+	  break;
+	case 116:                      // down
+	  rotation[0].x -= 0.25f;
+	  break;
+	case 111:                      // up
+	  rotation[0].x += 0.25f;
+	  break;
+	}
+	break;
+      }
+    }
+#else
+    if (XCheckWindowEvent(display, window, KeyPressMask, &event))
+      switch (event.xkey.keycode) {
+      case 9:                        // escape
+	run = false;
+	break;
+      case 113:                      // left
+	rotation[0].y -= 0.25f;
+	break;
+      case 114:                      // right
+	rotation[0].y += 0.25f;
+	break;
+      case 116:                      // down
+	rotation[0].x -= 0.25f;
+	break;
+      case 111:                      // up
+	rotation[0].x += 0.25f;
+	break;
+      }
+#endif
+
     update_uniform_buffer();
 
     next_swapchain_image();
