@@ -107,6 +107,8 @@ XEvent event;
 
 #define NEXT_IMAGE_TIMEOUT          1000 // nanoseconds
 
+#define MEGABYTES                   1024
+
 std::string platform;
 
 std::mutex device_mutex;
@@ -604,7 +606,7 @@ void create_buffers()
     buf_create_infos[i].sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
     buf_create_infos[i].pNext = nullptr;
     buf_create_infos[i].flags = 0;
-    buf_create_infos[i].size = 4096;
+    buf_create_infos[i].size = i == VERTEX_BUFFER ? 256*MEGABYTES : 4*MEGABYTES;
     buf_create_infos[i].usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT
       | VK_BUFFER_USAGE_TRANSFER_DST_BIT
       | VK_BUFFER_USAGE_UNIFORM_TEXEL_BUFFER_BIT
@@ -3403,6 +3405,88 @@ int main(int argc, const char* argv[])
   translation[0] = glm::vec3();
 
   bool run = true;
+  while (run) {
+#ifdef VK_USE_PLATFORM_WIN32_KHR
+#elif USE_XCB
+    event = xcb_poll_for_event(connection);
+    if (event) {
+      switch (event->response_type & ~0x80) {
+      case XCB_KEY_PRESS:
+	xcb_key_press_event_t* press = (xcb_key_press_event_t*) event;
+	switch (press->detail) {
+	case 9:                        // escape
+	  run = false;
+	  break;
+	case 113:                      // left
+	  rotation[0].y -= 0.25f;
+	  break;
+	case 114:                      // right
+	  rotation[0].y += 0.25f;
+	  break;
+	case 116:                      // down
+	  rotation[0].x -= 0.25f;
+	  break;
+	case 111:                      // up
+	  rotation[0].x += 0.25f;
+	  break;
+	}
+	break;
+      }
+    }
+#else
+    if (XCheckWindowEvent(display, window, KeyPressMask, &event))
+      switch (event.xkey.keycode) {
+      case 9:                        // escape
+	run = false;
+	break;
+      case 113:                      // left
+	rotation[0].y -= 0.25f;
+	break;
+      case 114:                      // right
+	rotation[0].y += 0.25f;
+	break;
+      case 116:                      // down
+	rotation[0].x -= 0.25f;
+	break;
+      case 111:                      // up
+	rotation[0].x += 0.25f;
+	break;
+      }
+#endif
+
+    update_uniform_buffer();
+
+    next_swapchain_image();
+    begin_recording(COMMAND_BUFFER_GRAPHICS);
+    record_begin_renderpass(COMMAND_BUFFER_GRAPHICS);
+    record_bind_graphics_pipeline(graphics_pipeline_idx,
+				  COMMAND_BUFFER_GRAPHICS);
+    record_bind_descriptor_set(DESCRIPTOR_SET_GRAPHICS,
+			       COMMAND_BUFFER_GRAPHICS);
+    record_bind_vertex_buffer(COMMAND_BUFFER_GRAPHICS);
+    record_draw(COMMAND_BUFFER_GRAPHICS, 1);
+    record_end_renderpass(COMMAND_BUFFER_GRAPHICS);
+    record_swapchain_image_barrier(COMMAND_BUFFER_GRAPHICS,
+				   VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+				   VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+				   VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
+				   VK_ACCESS_MEMORY_READ_BIT);
+    end_recording(COMMAND_BUFFER_GRAPHICS);
+    submit_to_queue(COMMAND_BUFFER_GRAPHICS, submit_queue_idx);
+    wait_for_queue(submit_queue_idx);
+    present_current_swapchain_image(submit_queue_idx);
+    reset_command_buffer(COMMAND_BUFFER_GRAPHICS);
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
+
+  load_object_file("gourd.obj");
+  update_vertex_buffer();
+
+  rotation.[0] = glm::vec3();
+  translation[0] = glm::vec3();
+
+  run = true;
   while (run) {
 #ifdef VK_USE_PLATFORM_WIN32_KHR
 #elif USE_XCB
