@@ -3507,7 +3507,7 @@ int main(int argc, const char* argv[])
   load_object_file("gourd.obj");
   update_vertex_buffer();
 
-  rotation.[0] = glm::vec3();
+  rotation[0] = glm::vec3();
   translation[0] = glm::vec3();
 
   run = true;
