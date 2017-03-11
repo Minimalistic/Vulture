@@ -19,6 +19,7 @@
 #include <tchar.h>
 HINSTANCE hInst;
 HWND hWnd;
+MSG msg;
 #elif USE_XCB
 #define VK_USE_PLATFORM_XCB_KHR
 #include <xcb/xcb.h>
@@ -3405,6 +3406,29 @@ int main(int argc, const char* argv[])
   bool run = true;
   while (run) {
 #ifdef VK_USE_PLATFORM_WIN32_KHR
+    if (GetMessage(&msg, hWnd, 0, 0)) {
+      switch (msg.message) {
+      case WM_KEYDOWN:
+	switch (msg.wParam) {
+	case VK_ESCAPE:
+	  run = false;
+	  break;
+	case VK_LEFT:
+	  rotation[0].y -= 0.25f;
+	  break;
+	case VK_RIGHT:
+	  rotation[0].y += 0.25f;
+	  break;
+	case VK_DOWN:
+	  rotation[0].x -= 0.25f;
+	  break;
+	case VK_UP:
+	  rotation[0].x += 0.25f;
+	  break;
+	}
+	break;
+      }
+    }
 #elif USE_XCB
     event = xcb_poll_for_event(connection);
     if (event) {
