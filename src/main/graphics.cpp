@@ -2648,7 +2648,7 @@ void handle_key_event_linux(unsigned int keycode)
 }
 
 #ifdef VK_USE_PLATFORM_WIN32_KHR
-void handle_key_event_windows(unsigned int keycode)
+void handle_key_event_windows(WPARAM keycode)
 {
   switch (keycode) {
   case VK_ESCAPE:
@@ -2666,6 +2666,23 @@ void handle_key_event_windows(unsigned int keycode)
   case VK_UP:
     rotation[0].x += 0.25f;
     break;
+  case 'W':
+    camera.eye.z -= 0.05f;
+    camera.pos.z -= 0.05f;
+    break;
+  case 'S':
+    camera.eye.z += 0.05f;
+    camera.pos.z += 0.05f;
+    break;
+  case 'A':
+    camera.eye.x -= 0.05f;
+    camera.pos.x -= 0.05f;
+    break;
+  case 'D':
+    camera.eye.x += 0.05f;
+    camera.pos.x += 0.05f;
+    break;
+
   }
 }
 #endif
