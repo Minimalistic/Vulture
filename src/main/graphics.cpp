@@ -213,8 +213,16 @@ struct {
   glm::mat4 view_matrix;
 } uniform_data;
 
+struct {
+  glm::vec3 eye;
+  glm::vec3 pos;
+  glm::vec3 up;
+} camera;
+
 std::vector<glm::vec3> rotation(INSTANCE_COUNT);
 std::vector<glm::vec3> translation(INSTANCE_COUNT);
+
+bool run;
 
 #ifdef VK_USE_PLATFORM_WIN32_KHR
 LRESULT CALLBACK WndProc(HWND hwnd,
@@ -2358,6 +2366,13 @@ void update_index_buffer()
 		memory[RESOURCE_BUFFER]);
 }
 
+void init_camera()
+{
+  camera.eye = glm::vec3(0.0f, 0.0f, 2.5f);
+  camera.pos = glm::vec3(0.0f, 0.0f, 0.0f);
+  camera.up = glm::vec3(0.0f, 1.0f, 0.0f);
+}
+
 void update_uniform_buffer()
 {
   uniform_data.projection_matrix =
@@ -2367,9 +2382,9 @@ void update_uniform_buffer()
 		     0.1f,
 		     256.0f);
   
-  uniform_data.view_matrix = glm::lookAt(glm::vec3(0.0f, 0.0f, 2.5f),
-					 glm::vec3(0.0f, 0.0f, 0.0f),
-					 glm::vec3(0.0f, 1.0f, 0.0f));
+  uniform_data.view_matrix = glm::lookAt(camera.eye,
+					 camera.pos,
+					 camera.up);
 
   for (unsigned int i = 0; i != INSTANCE_COUNT; i++) {
     uniform_data.model_matrix[i] = glm::mat4();
@@ -2594,6 +2609,66 @@ void load_object_file(const std::string& input_file)
     }
   }
 }
+
+void handle_key_event_linux(unsigned int keycode)
+{
+  switch (keycode) {
+  case 9:                        // escape
+    run = false;
+    break;
+  case 113:                      // left
+    rotation[0].y -= 0.25f;
+    break;
+  case 114:                      // right
+    rotation[0].y += 0.25f;
+    break;
+  case 116:                      // down
+    rotation[0].x -= 0.25f;
+    break;
+  case 111:                      // up
+    rotation[0].x += 0.25f;
+    break;
+  case 25:                       // W
+    camera.eye.z -= 0.05f;
+    camera.pos.z -= 0.05f;
+    break;
+  case 39:                       // S
+    camera.eye.z += 0.05f;
+    camera.pos.z += 0.05f;
+    break;
+  case 38:                       // A
+    camera.eye.x -= 0.05f;
+    camera.pos.x -= 0.05f;
+    break;
+  case 40:                       // D
+    camera.eye.x += 0.05f;
+    camera.pos.x += 0.05f;
+    break;
+  }
+}
+
+#ifdef VK_USE_PLATFORM_WIN32_KHR
+void handle_key_event_windows(unsigned int keycode)
+{
+  switch (keycode) {
+  case VK_ESCAPE:
+    run = false;
+    break;
+  case VK_LEFT:
+    rotation[0].y -= 0.25f;
+    break;
+  case VK_RIGHT:
+    rotation[0].y += 0.25f;
+    break;
+  case VK_DOWN:
+    rotation[0].x -= 0.25f;
+    break;
+  case VK_UP:
+    rotation[0].x += 0.25f;
+    break;
+  }
+}
+#endif
 
 void destroy_framebuffers()
 {
@@ -3198,6 +3273,7 @@ int main(int argc, const char* argv[])
   create_graphics_pipelines();
 
   load_triangle();
+  init_camera();
   update_vertex_buffer();
   update_index_buffer();
   update_uniform_buffer();
@@ -3405,29 +3481,13 @@ int main(int argc, const char* argv[])
   rotation[0] = glm::vec3();
   translation[0] = glm::vec3();
 
-  bool run = true;
+  run = true;
   while (run) {
 #ifdef VK_USE_PLATFORM_WIN32_KHR
     if (GetMessage(&msg, hWnd, 0, 0)) {
       switch (msg.message) {
       case WM_KEYDOWN:
-	switch (msg.wParam) {
-	case VK_ESCAPE:
-	  run = false;
-	  break;
-	case VK_LEFT:
-	  rotation[0].y -= 0.25f;
-	  break;
-	case VK_RIGHT:
-	  rotation[0].y += 0.25f;
-	  break;
-	case VK_DOWN:
-	  rotation[0].x -= 0.25f;
-	  break;
-	case VK_UP:
-	  rotation[0].x += 0.25f;
-	  break;
-	}
+	handle_key_event_windows(msg.wParam);
 	break;
       }
     }
@@ -3437,45 +3497,13 @@ int main(int argc, const char* argv[])
       switch (event->response_type & ~0x80) {
       case XCB_KEY_PRESS:
 	xcb_key_press_event_t* press = (xcb_key_press_event_t*) event;
-	switch (press->detail) {
-	case 9:                        // escape
-	  run = false;
-	  break;
-	case 113:                      // left
-	  rotation[0].y -= 0.25f;
-	  break;
-	case 114:                      // right
-	  rotation[0].y += 0.25f;
-	  break;
-	case 116:                      // down
-	  rotation[0].x -= 0.25f;
-	  break;
-	case 111:                      // up
-	  rotation[0].x += 0.25f;
-	  break;
-	}
+	handle_key_event_linux(press->detail);
 	break;
       }
     }
 #else
     if (XCheckWindowEvent(display, window, KeyPressMask, &event))
-      switch (event.xkey.keycode) {
-      case 9:                        // escape
-	run = false;
-	break;
-      case 113:                      // left
-	rotation[0].y -= 0.25f;
-	break;
-      case 114:                      // right
-	rotation[0].y += 0.25f;
-	break;
-      case 116:                      // down
-	rotation[0].x -= 0.25f;
-	break;
-      case 111:                      // up
-	rotation[0].x += 0.25f;
-	break;
-      }
+      handle_key_event_linux(event.xkey.keycode);
 #endif
 
     update_uniform_buffer();
@@ -3510,29 +3538,15 @@ int main(int argc, const char* argv[])
   rotation[0] = glm::vec3();
   translation[0] = glm::vec3();
 
+  init_camera();
+
   run = true;
   while (run) {
 #ifdef VK_USE_PLATFORM_WIN32_KHR
     if (GetMessage(&msg, hWnd, 0, 0)) {
       switch (msg.message) {
       case WM_KEYDOWN:
-	switch (msg.wParam) {
-	case VK_ESCAPE:
-	  run = false;
-	  break;
-	case VK_LEFT:
-	  rotation[0].y -= 0.25f;
-	  break;
-	case VK_RIGHT:
-	  rotation[0].y += 0.25f;
-	  break;
-	case VK_DOWN:
-	  rotation[0].x -= 0.25f;
-	  break;
-	case VK_UP:
-	  rotation[0].x += 0.25f;
-	  break;
-	}
+	handle_key_event_windows(msg.wParam);
 	break;
       }
     }
@@ -3542,45 +3556,13 @@ int main(int argc, const char* argv[])
       switch (event->response_type & ~0x80) {
       case XCB_KEY_PRESS:
 	xcb_key_press_event_t* press = (xcb_key_press_event_t*) event;
-	switch (press->detail) {
-	case 9:                        // escape
-	  run = false;
-	  break;
-	case 113:                      // left
-	  rotation[0].y -= 0.25f;
-	  break;
-	case 114:                      // right
-	  rotation[0].y += 0.25f;
-	  break;
-	case 116:                      // down
-	  rotation[0].x -= 0.25f;
-	  break;
-	case 111:                      // up
-	  rotation[0].x += 0.25f;
-	  break;
-	}
+	handle_key_event_linux(press->detail);
 	break;
       }
     }
 #else
     if (XCheckWindowEvent(display, window, KeyPressMask, &event))
-      switch (event.xkey.keycode) {
-      case 9:                        // escape
-	run = false;
-	break;
-      case 113:                      // left
-	rotation[0].y -= 0.25f;
-	break;
-      case 114:                      // right
-	rotation[0].y += 0.25f;
-	break;
-      case 116:                      // down
-	rotation[0].x -= 0.25f;
-	break;
-      case 111:                      // up
-	rotation[0].x += 0.25f;
-	break;
-      }
+      handle_key_event_linux(event.xkey.keycode);
 #endif
 
     update_uniform_buffer();
